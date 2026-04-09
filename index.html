@@ -16,12 +16,15 @@
     --font: 'IBM Plex Mono', 'SF Mono', monospace;
   }
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; overflow:hidden; background:var(--bg); color:var(--y); font-family:var(--font); }
   html, body { min-height:100%; overflow-x:hidden; overflow-y:auto; background:var(--bg); color:var(--y); font-family:var(--font); }
   input, button, select { font-family:var(--font); }
   button { cursor:pointer; border:none; background:none; color:var(--y); }
   input[type=range] { width:100%; accent-color:var(--y); }
 
   #app {
+    max-width:480px; margin:0 auto; height:100vh; height:100dvh;
+    display:flex; flex-direction:column; position:relative; overflow:hidden;
     max-width:480px; margin:0 auto; min-height:100vh; min-height:100dvh;
     display:flex; flex-direction:column; position:relative; overflow-y:auto; overflow-x:hidden;
     -webkit-overflow-scrolling:touch;
@@ -71,6 +74,7 @@
 
   /* ── Block List ── */
   .block-list {
+    flex:1; overflow-y:auto; overflow-x:hidden; padding:10px 16px 130px;
     flex:1; overflow-y:visible; overflow-x:hidden; padding:10px 16px 16px;
     display:flex; flex-direction:column; gap:6px;
     -webkit-overflow-scrolling:touch;
@@ -97,56 +101,7 @@
     position:relative; z-index:1;
   }
   .block-color-bar { width:4px; height:36px; border-radius:2px; flex-shrink:0; }
-  .block-grip { opacity:.25; flex-shrink:0; cursor:grab; }
-  .block-info { flex:1; min-width:0; }
-  .block-name { font-size:14px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .block-meta { font-size:10px; opacity:.45; display:flex; gap:8px; margin-top:1px; }
-  .block-meta svg { width:10px; height:10px; vertical-align:middle; }
-  .block-beat-display { text-align:center; flex-shrink:0; }
-  .block-beat-num { font-size:24px; font-weight:700; line-height:1; }
-  .block-beat-bar { font-size:9px; opacity:.45; }
-  .block-chevron { flex-shrink:0; opacity:.35; }
-
-  /* ── Edit Panel ── */
-  .block-edit {
-    padding:0 12px 12px; display:none; flex-direction:column; gap:10px;
-    border-top:1px solid var(--border); padding-top:10px;
-  }
-  .block-edit.open { display:flex; }
-  .edit-label { font-size:10px; opacity:.45; letter-spacing:1px; margin-bottom:4px; display:block; }
-  .edit-input {
-    width:100%; background:var(--bg); border:1px solid var(--border); border-radius:6px;
-    color:var(--y); padding:8px 10px; font-size:13px; outline:none;
-  }
-  .preset-tags { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
-  .preset-tag {
-    border:1px solid var(--border); border-radius:4px; padding:2px 8px;
-    font-size:10px; transition:all .1s;
-  }
-  .preset-tag.active { background:var(--y); color:var(--bg); border-color:var(--y); }
-  .bars-row { display:flex; gap:6px; }
-  .bars-btn {
-    flex:1; border:1px solid var(--y); border-radius:6px; padding:8px 0;
-    font-size:15px; font-weight:700; transition:all .1s;
-  }
-  .bars-btn.active { background:var(--y); color:var(--bg); }
-  .colors-row { display:flex; flex-wrap:wrap; gap:6px; }
-  .color-swatch {
-    width:28px; height:28px; border-radius:6px; border:2px solid transparent;
-    transition:border .1s;
-  }
-  .color-swatch.active { border:3px solid white; }
-  .toggle-row { display:flex; gap:8px; }
-  .toggle-btn {
-    flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
-    border:1px solid var(--border); border-radius:6px; padding:8px;
-    font-size:11px; transition:all .1s;
-  }
-  .toggle-btn.on { background:rgba(255,214,0,.13); border-color:var(--y); }
-  .action-row { display:flex; gap:8px; }
-  .action-btn {
-    flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
-    border:1px solid var(--border); border-radius:6px; padding:8px; font-size:11px;
+@@ -149,103 +150,110 @@
   }
   .action-btn.danger { background:rgba(255,23,68,.13); border-color:var(--red); color:var(--red); }
 
@@ -172,6 +127,7 @@
 
   /* ── Progress Bar ── */
   .global-progress {
+    position:absolute; bottom:72px; left:0; right:0; height:3px;
     position:sticky; bottom:72px; left:0; right:0; height:3px;
     background:var(--border); z-index:200; display:none;
   }
@@ -187,6 +143,7 @@
 
   /* ── Bottom Bar ── */
   .bottom-bar {
+    position:absolute; bottom:0; left:0; right:0;
     position:sticky; bottom:0; left:0; right:0;
     background:var(--bg); border-top:1px solid var(--border);
     padding:10px 16px; padding-bottom:max(10px, env(safe-area-inset-bottom));
@@ -225,6 +182,13 @@
   }
   .voice-indicator.show { opacity:1; }
 
+  .fullscreen-pulse {
+    position:fixed; inset:0; pointer-events:none; z-index:999;
+    opacity:0; transition:opacity .09s linear;
+    background:radial-gradient(circle at center, rgba(255,214,0,.25) 0%, rgba(255,214,0,.12) 36%, rgba(255,214,0,0) 72%);
+  }
+  .fullscreen-pulse.show { opacity:1; }
+
   /* Scrollbar */
   .block-list::-webkit-scrollbar { width:3px; }
   .block-list::-webkit-scrollbar-track { background:transparent; }
@@ -250,19 +214,7 @@
       <button id="settingsBtn" style="border:1px solid var(--y);border-radius:6px;padding:6px 8px;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4,15a1.65,1.65 0 0,0,.33,1.82l.06.06a2,2 0 0,1-2.83,2.83l-.06-.06a1.65,1.65 0 0,0-1.82-.33 1.65,1.65 0 0,0-1,1.51V21a2,2 0 0,1-4,0v-.09A1.65,1.65 0 0,0,9,19.4a1.65,1.65 0 0,0-1.82.33l-.06.06a2,2 0 0,1-2.83-2.83l.06-.06A1.65,1.65 0 0,0,4.68,15a1.65,1.65 0 0,0-1.51-1H3a2,2 0 0,1,0-4h.09A1.65,1.65 0 0,0,4.6,9a1.65,1.65 0 0,0-.33-1.82l-.06-.06a2,2 0 0,1,2.83-2.83l.06.06A1.65,1.65 0 0,0,9,4.68a1.65,1.65 0 0,0,1-1.51V3a2,2 0 0,1,4,0v.09a1.65,1.65 0 0,0,1,1.51 1.65,1.65 0 0,0,1.82-.33l.06-.06a2,2 0 0,1,2.83,2.83l-.06.06A1.65,1.65 0 0,0,19.4,9a1.65,1.65 0 0,0,1.51,1H21a2,2 0 0,1,0,4h-.09a1.65,1.65 0 0,0-1.51,1Z"/></svg>
       </button>
-    </div>
-    <div class="controls-row">
-      <div class="ctrl-box" style="flex:1">
-        <span class="ctrl-label">BPM</span>
-        <input type="number" id="bpmInput" class="bpm-input" value="120" min="30" max="300">
-        <div class="bpm-arrows">
-          <button id="bpmUp">▲</button>
-          <button id="bpmDown">▼</button>
-        </div>
-      </div>
-      <div class="ctrl-box" id="tsBox">
-        <span class="ctrl-label">COMP</span>
-      </div>
+@@ -265,100 +273,166 @@
     </div>
     <div class="duration-bar">
       <span id="totalBars">0 compases</span>
@@ -288,7 +240,8 @@
     <div class="setting-row" style="margin-bottom:0">
       <div style="display:flex;align-items:center;gap:8px;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2"><path d="M12,1a3,3 0 0,0-3,3v8a3,3 0 0,0,6,0V4A3,3 0 0,0,12,1Z"/><path d="M19,10v2a7,7 0 0,1-14,0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-        <span style="font-size:10px;opacity:.45">Exportación directa a WAV. En iPhone, la voz del sistema puede variar; los conteos siempre suenan.</span>
+        <span style="font-size:10px;opacity:.45">La exportación graba en tiempo real para incluir las voces. Suena por el altavoz durante el proceso.</span>
+        <span style="font-size:10px;opacity:.45">Exportación WAV con voz sintética integrada. Al guardar, se abrirá compartir/archivos cuando esté disponible.</span>
       </div>
     </div>
   </div>
@@ -298,6 +251,7 @@
 
   <!-- Voice indicator overlay -->
   <div class="voice-indicator" id="voiceIndicator"></div>
+  <div class="fullscreen-pulse" id="fullscreenPulse"></div>
 
   <!-- Global progress -->
   <div class="global-progress" id="globalProgress">
@@ -316,6 +270,7 @@
     <button class="export-btn disabled" id="exportBtn">
       <div class="export-progress" id="exportProgress"></div>
       <svg viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2" stroke-linecap="round"><path d="M21,15v4a2,2 0 0,1-2,2H5a2,2 0 0,1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span id="exportLabel">REC</span>
       <span id="exportLabel">WAV</span>
     </button>
   </div>
@@ -338,6 +293,71 @@ const PRESET_NAMES = [
   "Build-Up","Drop","Interludio","Coda"
 ];
 
+const CUE_NUMBER_WORDS = {
+  '0': 'cero',
+  '1': 'uno',
+  '2': 'dos',
+  '3': 'tres',
+  '4': 'cuatro',
+  '5': 'cinco',
+  '6': 'seis',
+  '7': 'siete',
+  '8': 'ocho',
+  '9': 'nueve',
+};
+
+function normalizeCueText(text) {
+  return (text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\d/g, d => ' ' + (CUE_NUMBER_WORDS[d] || d) + ' ')
+    .replace(/[^a-z\s-]/g, ' ')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildCueTokens(text) {
+  const normalized = normalizeCueText(text);
+  if (!normalized) return ['y'];
+  const tokenMap = {
+    y: ['y'],
+    en: ['en'],
+    dos: ['dos'],
+    tres: ['tres'],
+    uno: ['u', 'no'],
+    cuatro: ['kua', 'tro'],
+    cinco: ['sin', 'ko'],
+    verso: ['ver', 'so'],
+    intro: ['in', 'tro'],
+    pre: ['pre'],
+    estribillo: ['es', 'tri', 'yo'],
+    puente: ['pwen', 'te'],
+    solo: ['so', 'lo'],
+    breakdown: ['breik', 'daun'],
+    outro: ['aut', 'ro'],
+    build: ['bild'],
+    up: ['ap'],
+    drop: ['drop'],
+    interludio: ['in', 'ter', 'lu', 'dio'],
+    coda: ['ko', 'da'],
+    copia: ['ko', 'pia'],
+  };
+
+  const out = [];
+  normalized.split(' ').forEach((w) => {
+    const seq = tokenMap[w];
+    if (seq) {
+      out.push(...seq);
+    } else {
+      // fallback: simple syllabic cue from unknown words
+      out.push(w.slice(0, 3));
+    }
+  });
+  return out.slice(0, 8);
+}
+
 // ── State ──
 let state = {
   bpm: 120,
@@ -356,59 +376,14 @@ let state = {
   showAddPanel: false,
 };
 
-// ══════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 //  AUDIO ENGINE
 // ═══════════════════════════════════════════════════
 const audio = {
   ctx: null,
   masterGain: null,
   reverbNode: null,
-  reverbGain: null,
-  dryGain: null,
-  isPlaying: false,
-  timer: null,
-  blockIdx: 0,
-
-  init() {
-    if (this.ctx) return;
-    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.value = 0.5;
-
-    // Reverb impulse response
-    const sr = this.ctx.sampleRate;
-    const len = sr * 2;
-    const imp = this.ctx.createBuffer(2, len, sr);
-    for (let ch = 0; ch < 2; ch++) {
-      const d = imp.getChannelData(ch);
-      for (let i = 0; i < len; i++) d[i] = (Math.random()*2-1) * Math.pow(1-i/len, 2.5);
-    }
-    this.reverbNode = this.ctx.createConvolver();
-    this.reverbNode.buffer = imp;
-    this.reverbGain = this.ctx.createGain();
-    this.reverbGain.gain.value = 0.15;
-    this.dryGain = this.ctx.createGain();
-    this.dryGain.gain.value = 0.85;
-
-    this.masterGain.connect(this.dryGain);
-    this.dryGain.connect(this.ctx.destination);
-    this.masterGain.connect(this.reverbNode);
-    this.reverbNode.connect(this.reverbGain);
-    this.reverbGain.connect(this.ctx.destination);
-  },
-
-  setReverb(wet) {
-    if (!this.reverbGain) return;
-    this.reverbGain.gain.value = Math.min(1, wet);
-    this.dryGain.gain.value = Math.max(0, 1 - wet);
-  },
-
-  click(freq, vol, dur = 0.04) {
-    if (!this.ctx) return;
-    const t = this.ctx.currentTime;
-    const o = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    o.frequency.value = freq;
+@@ -411,50 +485,113 @@ const audio = {
     o.type = "sine";
     g.gain.setValueAtTime(vol, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + dur);
@@ -432,6 +407,69 @@ const audio = {
     g.gain.exponentialRampToValueAtTime(0.001, t + (durs[idx] || 0.07));
     o.connect(g); g.connect(this.masterGain);
     o.start(t); o.stop(t + (durs[idx] || 0.07));
+  },
+
+  voiceCue(kind = 'y', gainMul = 1) {
+    if (!this.ctx) return;
+    const cfg = {
+      y:     { f1: 420, f2: 1700, d: 0.14, g: 0.40 },
+      en:    { f1: 500, f2: 1500, d: 0.12, g: 0.34 },
+      dos:   { f1: 380, f2: 1200, d: 0.13, g: 0.34 },
+      tresy: { f1: 650, f2: 1900, d: 0.15, g: 0.42 },
+      u:     { f1: 320, f2: 930,  d: 0.11, g: 0.32 },
+      no:    { f1: 380, f2: 1240, d: 0.11, g: 0.33 },
+      ver:   { f1: 540, f2: 1700, d: 0.12, g: 0.34 },
+      so:    { f1: 430, f2: 1400, d: 0.12, g: 0.34 },
+      in:    { f1: 460, f2: 1600, d: 0.11, g: 0.33 },
+      tro:   { f1: 500, f2: 1200, d: 0.11, g: 0.33 },
+      es:    { f1: 520, f2: 1800, d: 0.10, g: 0.32 },
+      tri:   { f1: 620, f2: 2100, d: 0.11, g: 0.33 },
+      yo:    { f1: 390, f2: 980,  d: 0.11, g: 0.33 },
+      pre:   { f1: 610, f2: 1700, d: 0.11, g: 0.33 },
+      pwen:  { f1: 430, f2: 1300, d: 0.12, g: 0.33 },
+      te:    { f1: 620, f2: 2000, d: 0.11, g: 0.33 },
+      lo:    { f1: 400, f2: 1100, d: 0.11, g: 0.33 },
+      aut:   { f1: 500, f2: 900,  d: 0.11, g: 0.33 },
+      ko:    { f1: 430, f2: 980,  d: 0.11, g: 0.33 },
+      da:    { f1: 700, f2: 1300, d: 0.11, g: 0.33 },
+      ter:   { f1: 580, f2: 1850, d: 0.11, g: 0.32 },
+      lu:    { f1: 360, f2: 1000, d: 0.11, g: 0.32 },
+      dio:   { f1: 440, f2: 1180, d: 0.12, g: 0.33 },
+    }[kind] || { f1: 500, f2: 1600, d: 0.12, g: 0.24 };
+
+    const t = this.ctx.currentTime;
+    const dur = cfg.d;
+    const amp = cfg.g * gainMul;
+
+    const makeVowelLayer = (freq, detune = 0) => {
+      const o = this.ctx.createOscillator();
+      const f = this.ctx.createBiquadFilter();
+      const g = this.ctx.createGain();
+      o.type = "sawtooth";
+      o.frequency.setValueAtTime(130 + detune, t);
+      o.frequency.exponentialRampToValueAtTime(170 + detune, t + dur);
+      f.type = "bandpass";
+      f.frequency.value = freq;
+      f.Q.value = 7;
+      g.gain.setValueAtTime(amp, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.connect(f); f.connect(g); g.connect(this.masterGain);
+      o.start(t); o.stop(t + dur);
+    };
+
+    makeVowelLayer(cfg.f1, 0);
+    makeVowelLayer(cfg.f2, 6);
+  },
+
+  voicePhrase(text, gainMul = 1) {
+    if (!this.ctx) return;
+    const tokens = buildCueTokens(text);
+    const step = 0.105;
+    const base = this.ctx.currentTime;
+    tokens.forEach((tk, i) => {
+      const delayMs = Math.max(0, Math.round((base + (i * step) - this.ctx.currentTime) * 1000));
+      setTimeout(() => this.voiceCue(tk, gainMul), delayMs);
+    });
   },
 
   speak(text, rate = 1.2) {
@@ -459,26 +497,7 @@ const audio = {
         return;
       }
 
-      const block = blocks[this.blockIdx];
-      const totalBlockBeats = block.bars * ts;
-      const beatInBar = beatInBlock % ts;
-      const barInBlock = Math.floor(beatInBlock / ts);
-
-      // ── Reverb ramp ──
-      const progress = beatInBlock / totalBlockBeats;
-      let revAmt = reverbBase;
-      if (progress > 0.7) {
-        const rp = (progress - 0.7) / 0.3;
-        revAmt = reverbBase + (0.9 - reverbBase) * Math.pow(rp, 2 - reverbInt * 1.5);
-      }
-      this.setReverb(revAmt);
-
-      // ── Position context ──
-      const isDownbeat = beatInBar === 0;
-      const isLastBar = barInBlock === block.bars - 1;
-      const hasNext = this.blockIdx < blocks.length - 1;
-      const isClaqueta = block.claqueta && isLastBar && hasNext;
-      const isBlockEntrance = beatInBlock === 0;
+@@ -481,315 +618,396 @@ const audio = {
 
       // ── METRONOME ──
       if (isBlockEntrance) {
@@ -504,6 +523,7 @@ const audio = {
       // Then NEXT beat = strong "1" of new block
       if (hasNext && block.voice && isLastBar) {
         const nextName = blocks[this.blockIdx + 1].name;
+        const nextColor = blocks[this.blockIdx + 1].color || '#FFD600';
         if (ts >= 4) {
           const countStart = ts - 4;
           const countBeat = beatInBar - countStart;
@@ -511,15 +531,27 @@ const audio = {
             this.countTone(0);
             speechSynthesis.cancel();
             this.speak("Y " + nextName, 1.8);
+            this.voicePhrase("Y " + nextName, 1.2);
+            triggerFullscreenPulse(nextColor, 0.24);
+            if ('speechSynthesis' in window) {
+              speechSynthesis.cancel();
+              this.speak("Y " + nextName, 1.8);
+            }
             showVoiceIndicator("Y " + nextName);
           } else if (countBeat === 1) {
             this.countTone(1);
+            this.voiceCue('en');
+            triggerFullscreenPulse(nextColor, 0.32);
             showVoiceIndicator("en");
           } else if (countBeat === 2) {
             this.countTone(2);
+            this.voiceCue('dos');
+            triggerFullscreenPulse(nextColor, 0.42);
             showVoiceIndicator("dos");
           } else if (countBeat === 3) {
             this.countTone(3);
+            this.voiceCue('tresy');
+            triggerFullscreenPulse(nextColor, 0.58);
             showVoiceIndicator("tres y");
           }
         } else if (ts === 3) {
@@ -528,12 +560,22 @@ const audio = {
             this.countTone(0);
             speechSynthesis.cancel();
             this.speak("Y " + nextName, 1.8);
+            this.voicePhrase("Y " + nextName, 1.2);
+            triggerFullscreenPulse(nextColor, 0.28);
+            if ('speechSynthesis' in window) {
+              speechSynthesis.cancel();
+              this.speak("Y " + nextName, 1.8);
+            }
             showVoiceIndicator("Y " + nextName);
           } else if (beatInBar === 1) {
             this.countTone(2);
+            this.voiceCue('dos');
+            triggerFullscreenPulse(nextColor, 0.42);
             showVoiceIndicator("dos");
           } else if (beatInBar === 2) {
             this.countTone(3);
+            this.voiceCue('tresy');
+            triggerFullscreenPulse(nextColor, 0.58);
             showVoiceIndicator("tres y");
           }
         }
@@ -578,15 +620,80 @@ function showVoiceIndicator(text) {
   voiceTimeout = setTimeout(() => el.classList.remove('show'), 400);
 }
 
+let pulseTimeout;
+function triggerFullscreenPulse(color = '#FFD600', strength = 0.35) {
+  const el = document.getElementById('fullscreenPulse');
+  if (!el) return;
+  const clamped = Math.max(0.12, Math.min(0.85, strength));
+  const rgba = (hex, a) => {
+    const h = hex.replace('#', '');
+    const v = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+    const r = parseInt(v.slice(0, 2), 16);
+    const g = parseInt(v.slice(2, 4), 16);
+    const b = parseInt(v.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${a})`;
+  };
+  el.style.background = `radial-gradient(circle at center, ${rgba(color, clamped)} 0%, ${rgba(color, clamped * 0.45)} 35%, ${rgba(color, 0)} 72%)`;
+  el.classList.remove('show');
+  void el.offsetWidth; // restart transition
+  el.classList.add('show');
+  clearTimeout(pulseTimeout);
+  pulseTimeout = setTimeout(() => el.classList.remove('show'), 95);
+}
+
 // ═══════════════════════════════════════════════════
+//  REAL-TIME EXPORT (captures voice + clicks)
 //  AUDIO HELPERS (iOS unlock + WAV export)
 // ═══════════════════════════════════════════════════
+// Strategy: Play the track in real-time through the AudioContext,
+// capture the stream with MediaRecorder. Speech synthesis audio
+// is captured by routing through a MediaStreamDestination that
+// merges with the oscillator output.
+
+async function exportRealtime(blocks, bpm, ts, reverbBase, reverbInt, onProgress, onFinish) {
+  // Create a fresh AudioContext for export
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const masterGain = ctx.createGain();
+  masterGain.gain.value = 0.5;
+
+  // Reverb chain
+  const sr = ctx.sampleRate;
+  const impLen = sr * 2;
+  const imp = ctx.createBuffer(2, impLen, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = imp.getChannelData(ch);
+    for (let i = 0; i < impLen; i++) d[i] = (Math.random()*2-1) * Math.pow(1-i/impLen, 2.5);
 async function ensureAudioUnlocked() {
   audio.init();
   if (audio.ctx && audio.ctx.state === 'suspended') {
     await audio.ctx.resume();
   }
+  const convolver = ctx.createConvolver(); convolver.buffer = imp;
+  const reverbGain = ctx.createGain(); reverbGain.gain.value = reverbBase;
+  const dryGain = ctx.createGain(); dryGain.gain.value = 1 - reverbBase;
 
+  masterGain.connect(dryGain);
+  masterGain.connect(convolver);
+  convolver.connect(reverbGain);
+
+  // Create MediaStream destination for recording
+  const dest = ctx.createMediaStreamDestination();
+  dryGain.connect(dest);
+  reverbGain.connect(dest);
+  // Also connect to speakers so speechSynthesis timing is correct
+  dryGain.connect(ctx.destination);
+  reverbGain.connect(ctx.destination);
+
+  // MediaRecorder
+  const chunks = [];
+  const recorder = new MediaRecorder(dest.stream, {
+    mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
+  });
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+  const recordingDone = new Promise(resolve => {
+    recorder.onstop = () => resolve();
+  });
   // iOS/Safari unlock tone (inaudible but starts audio session)
   if (audio.ctx) {
     const b = audio.ctx.createBuffer(1, 1, audio.ctx.sampleRate);
@@ -597,6 +704,7 @@ async function ensureAudioUnlocked() {
   }
 }
 
+  recorder.start();
 function addPulse(data, sampleRate, startSec, freq, gain, durSec, type = 'sine') {
   const start = Math.max(0, Math.floor(startSec * sampleRate));
   const len = Math.max(1, Math.floor(durSec * sampleRate));
@@ -607,6 +715,131 @@ function addPulse(data, sampleRate, startSec, freq, gain, durSec, type = 'sine')
     const wave = type === 'triangle' ? (2 / Math.PI) * Math.asin(Math.sin(ph)) : Math.sin(ph);
     data[start + i] += wave * gain * env;
   }
+}
+
+  // Helper
+  function eClick(freq, vol, dur = 0.04) {
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.frequency.value = freq; o.type = "sine";
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(masterGain);
+    o.start(t); o.stop(t + dur);
+function addVoiceCue(data, sampleRate, startSec, kind = 'y', gainMul = 1) {
+  const cfg = {
+    y:     { f1: 420, f2: 1700, d: 0.14, g: 0.40 },
+    en:    { f1: 500, f2: 1500, d: 0.12, g: 0.34 },
+    dos:   { f1: 380, f2: 1200, d: 0.13, g: 0.34 },
+    tresy: { f1: 650, f2: 1900, d: 0.15, g: 0.42 },
+    u:     { f1: 320, f2: 930,  d: 0.11, g: 0.32 },
+    no:    { f1: 380, f2: 1240, d: 0.11, g: 0.33 },
+    ver:   { f1: 540, f2: 1700, d: 0.12, g: 0.34 },
+    so:    { f1: 430, f2: 1400, d: 0.12, g: 0.34 },
+    in:    { f1: 460, f2: 1600, d: 0.11, g: 0.33 },
+    tro:   { f1: 500, f2: 1200, d: 0.11, g: 0.33 },
+    es:    { f1: 520, f2: 1800, d: 0.10, g: 0.32 },
+    tri:   { f1: 620, f2: 2100, d: 0.11, g: 0.33 },
+    yo:    { f1: 390, f2: 980,  d: 0.11, g: 0.33 },
+    pre:   { f1: 610, f2: 1700, d: 0.11, g: 0.33 },
+    pwen:  { f1: 430, f2: 1300, d: 0.12, g: 0.33 },
+    te:    { f1: 620, f2: 2000, d: 0.11, g: 0.33 },
+    lo:    { f1: 400, f2: 1100, d: 0.11, g: 0.33 },
+    aut:   { f1: 500, f2: 900,  d: 0.11, g: 0.33 },
+    ko:    { f1: 430, f2: 980,  d: 0.11, g: 0.33 },
+    da:    { f1: 700, f2: 1300, d: 0.11, g: 0.33 },
+    ter:   { f1: 580, f2: 1850, d: 0.11, g: 0.32 },
+    lu:    { f1: 360, f2: 1000, d: 0.11, g: 0.32 },
+    dio:   { f1: 440, f2: 1180, d: 0.12, g: 0.33 },
+  }[kind] || { f1: 500, f2: 1600, d: 0.12, g: 0.24 };
+
+  const duration = cfg.d;
+  const amp = cfg.g * gainMul;
+  const start = Math.max(0, Math.floor(startSec * sampleRate));
+  const len = Math.max(1, Math.floor(duration * sampleRate));
+
+  for (let i = 0; i < len && (start + i) < data.length; i++) {
+    const x = i / len;
+    const env = Math.exp(-6 * x);
+    const t = i / sampleRate;
+    const baseFreq = 130 + 40 * x;
+    const s1 = Math.sin(2 * Math.PI * baseFreq * t);
+    const s2 = Math.sin(2 * Math.PI * cfg.f1 * t) * 0.7;
+    const s3 = Math.sin(2 * Math.PI * cfg.f2 * t) * 0.45;
+    data[start + i] += (s1 + s2 + s3) * amp * env * 0.45;
+  }
+}
+
+  function eCountTone(idx) {
+    const freqs = [1600, 1800, 2000, 2400];
+    const vols = [0.3, 0.3, 0.35, 0.5];
+    const durs = [0.06, 0.06, 0.06, 0.09];
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.frequency.value = freqs[idx] || 2400; o.type = "triangle";
+    g.gain.setValueAtTime(vols[idx] || 0.4, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + (durs[idx] || 0.07));
+    o.connect(g); g.connect(masterGain);
+    o.start(t); o.stop(t + (durs[idx] || 0.07));
+function addVoicePhrase(data, sampleRate, startSec, text, gainMul = 1) {
+  const tokens = buildCueTokens(text);
+  const step = 0.105;
+  tokens.forEach((tk, i) => {
+    addVoiceCue(data, sampleRate, startSec + (i * step), tk, gainMul);
+  });
+}
+
+async function saveAudioFile(blob, filename) {
+  const file = new File([blob], filename, { type: 'audio/wav' });
+
+  // Mobile first: share sheet (Drive, Files, etc.)
+  if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: 'BANDMAP WAV',
+        text: 'Exportación desde BANDMAP',
+      });
+      return;
+    } catch (err) {
+      // user cancelled share -> fallback download
+    }
+  }
+
+  function eSpeak(text, rate = 1.8) {
+    if (!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'es-ES'; u.rate = rate; u.pitch = 0.9; u.volume = 1;
+    speechSynthesis.speak(u);
+  // Desktop Chrome/Edge picker
+  if ('showSaveFilePicker' in window) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: 'WAV audio', accept: { 'audio/wav': ['.wav'] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    } catch (err) {
+      // user cancelled picker -> fallback download
+    }
+  }
+
+  function setRev(wet) {
+    reverbGain.gain.value = Math.min(1, wet);
+    dryGain.gain.value = Math.max(0, 1 - wet);
+  // Generic fallback
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function encodeWavFromMono(floatData, sampleRate = 48000) {
@@ -639,6 +872,8 @@ function encodeWavFromMono(floatData, sampleRate = 48000) {
     view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
   }
 
+  // ── Real-time playback loop ──
+  const interval = 60000 / bpm;
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
@@ -646,14 +881,34 @@ async function exportWav(blocks, bpm, ts, reverbBase, reverbInt, onProgress, onF
   const sampleRate = 48000;
   const interval = 60 / bpm;
   const totalBeats = blocks.reduce((s, b) => s + b.bars * ts, 0);
+  let globalBeat = 0;
+  let blockIdx = 0;
+  let beatInBlock = 0;
   const totalSecs = totalBeats * interval;
   const tail = 1.2;
   const data = new Float32Array(Math.ceil((totalSecs + tail) * sampleRate));
 
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (blockIdx >= blocks.length) {
+        // Wait a moment for reverb tail, then stop
+        setTimeout(() => {
+          recorder.stop();
+          recordingDone.then(() => {
+            ctx.close();
+            const blob = new Blob(chunks, { type: 'audio/webm' });
+            resolve(blob);
+          });
+        }, 1500);
+        onFinish();
+        return;
+      }
   const clickDur = { strong: 0.08, down: 0.05, normal: 0.03, claq: 0.04 };
   const countFreqs = [1600, 1800, 2000, 2400];
   const countDurs = [0.06, 0.06, 0.06, 0.09];
 
+      const block = blocks[blockIdx];
+      const totalBlockBeats = block.bars * ts;
   let beat = 0;
   for (let blockIdx = 0; blockIdx < blocks.length; blockIdx++) {
     const block = blocks[blockIdx];
@@ -669,44 +924,102 @@ async function exportWav(blocks, bpm, ts, reverbBase, reverbInt, onProgress, onF
       const isClaqueta = block.claqueta && isLastBar && hasNext;
       const isBlockEntrance = beatInBlock === 0;
 
+      // Reverb ramp
       const progress = beatInBlock / totalBlockBeats;
       let revAmt = reverbBase;
       if (progress > 0.7) {
         const rp = (progress - 0.7) / 0.3;
         revAmt = reverbBase + (0.9 - reverbBase) * Math.pow(rp, 2 - reverbInt * 1.5);
       }
+      setRev(revAmt);
+
+      const isDownbeat = beatInBar === 0;
+      const isLastBar = barInBlock === block.bars - 1;
+      const hasNext = blockIdx < blocks.length - 1;
+      const isClaqueta = block.claqueta && isLastBar && hasNext;
+      const isBlockEntrance = beatInBlock === 0;
       const wetBoost = 1 + (revAmt * 0.25);
 
+      // CLICK
       if (isBlockEntrance) {
+        eClick(1400, 0.85, 0.08);
+        eClick(700, 0.35, 0.06);
         addPulse(data, sampleRate, t, 1400, 0.85 * wetBoost, clickDur.strong, 'sine');
         addPulse(data, sampleRate, t, 700, 0.35 * wetBoost, 0.06, 'sine');
       } else if (isClaqueta) {
+        eClick(isDownbeat ? 1400 : 1000, isDownbeat ? 0.7 : 0.5, isDownbeat ? 0.06 : 0.04);
+        eClick(2200, 0.25, 0.015);
         addPulse(data, sampleRate, t, isDownbeat ? 1400 : 1000, (isDownbeat ? 0.7 : 0.5) * wetBoost, isDownbeat ? 0.06 : clickDur.claq, 'sine');
         addPulse(data, sampleRate, t, 2200, 0.25 * wetBoost, 0.015, 'triangle');
       } else if (isDownbeat) {
+        eClick(1200, 0.5, 0.05);
         addPulse(data, sampleRate, t, 1200, 0.5 * wetBoost, clickDur.down, 'sine');
       } else {
+        eClick(800, 0.25, 0.03);
         addPulse(data, sampleRate, t, 800, 0.25 * wetBoost, clickDur.normal, 'sine');
       }
 
+      // VOICE + COUNT on last bar
       if (hasNext && block.voice && isLastBar) {
+        const nextName = blocks[blockIdx + 1].name;
         if (ts >= 4) {
           const countStart = ts - 4;
           const countBeat = beatInBar - countStart;
+          if (countBeat === 0) {
+            eCountTone(0);
+            eSpeak("Y " + nextName, 1.8);
+          } else if (countBeat === 1) {
+            eCountTone(1);
+          } else if (countBeat === 2) {
+            eCountTone(2);
+          } else if (countBeat === 3) {
+            eCountTone(3);
+            eSpeak("tres y", 2.0);
+          }
+        } else if (ts === 3) {
+          if (beatInBar === 0) {
+            eCountTone(0);
+            eSpeak("Y " + nextName, 1.8);
+          } else if (beatInBar === 1) {
+            eCountTone(2);
+          } else if (beatInBar === 2) {
+            eCountTone(3);
+            eSpeak("tres y", 2.0);
           if (countBeat >= 0 && countBeat <= 3) {
             addPulse(data, sampleRate, t, countFreqs[countBeat], 0.42, countDurs[countBeat], 'triangle');
+            if (countBeat === 0) addVoicePhrase(data, sampleRate, t, "Y " + blocks[blockIdx + 1].name, 1.25);
+            if (countBeat === 1) addVoiceCue(data, sampleRate, t, 'en');
+            if (countBeat === 2) addVoiceCue(data, sampleRate, t, 'dos');
+            if (countBeat === 3) addVoiceCue(data, sampleRate, t, 'tresy');
           }
         } else if (ts === 3 && beatInBar <= 2) {
           const map = [0, 2, 3][beatInBar];
           addPulse(data, sampleRate, t, countFreqs[map], 0.42, countDurs[map], 'triangle');
+          if (beatInBar === 0) addVoicePhrase(data, sampleRate, t, "Y " + blocks[blockIdx + 1].name, 1.25);
+          if (beatInBar === 1) addVoiceCue(data, sampleRate, t, 'dos');
+          if (beatInBar === 2) addVoiceCue(data, sampleRate, t, 'tresy');
         }
       }
 
+      onProgress(globalBeat / totalBeats);
+      beatInBlock++;
+      globalBeat++;
+
+      if (beatInBlock >= totalBlockBeats) {
+        beatInBlock = 0;
+        blockIdx++;
+        setRev(reverbBase);
+      }
+
+      setTimeout(tick, interval);
+    };
       beat++;
       onProgress(beat / totalBeats);
     }
   }
 
+    tick();
+  });
   onFinish();
   return encodeWavFromMono(data, sampleRate);
 }
@@ -734,278 +1047,7 @@ function updateBottomBar(ps) {
   const main = document.getElementById('bottomMain');
   const sub = document.getElementById('bottomSub');
   if (state.playing && ps) {
-    const b = state.blocks[ps.blockIndex];
-    if (b) {
-      main.textContent = b.name;
-      main.style.color = b.color;
-      sub.textContent = `Compás ${ps.barInBlock+1}/${b.bars} · Bloque ${ps.blockIndex+1}/${state.blocks.length}`;
-    }
-  } else {
-    main.style.color = '#FFD600';
-    main.textContent = state.bpm + ' BPM · ' + state.ts + '/4';
-    const tb = state.blocks.reduce((s,b) => s+b.bars, 0);
-    const beats = tb * state.ts;
-    const secs = beats * (60 / state.bpm);
-    const m = Math.floor(secs/60), s = Math.floor(secs%60);
-    sub.textContent = state.blocks.length + ' bloques · ' + m + ':' + String(s).padStart(2,'0');
-  }
-}
-
-function updatePlayBtn() {
-  const btn = document.getElementById('playBtn');
-  const exp = document.getElementById('exportBtn');
-  const empty = state.blocks.length === 0;
-
-  if (state.playing) {
-    btn.className = 'play-btn stop';
-    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="#0A0A0A"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>';
-    exp.classList.add('disabled');
-  } else {
-    btn.className = 'play-btn go' + (empty ? ' disabled' : '');
-    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="#0A0A0A"><polygon points="5,3 19,12 5,21"/></svg>';
-    exp.classList.toggle('disabled', empty);
-  }
-}
-
-function renderBlocks() {
-  const list = document.getElementById('blockList');
-  list.innerHTML = '';
-
-  if (state.blocks.length === 0) {
-    list.innerHTML = '<div class="empty-msg">Añade bloques para construir la estructura</div>';
-  }
-
-  state.blocks.forEach((block, idx) => {
-    const card = document.createElement('div');
-    card.className = 'block-card';
-    card.dataset.blockIdx = idx;
-    card.draggable = !state.playing;
-    card.id = 'block-' + block.id;
-
-    // Progress bg
-    const progBg = document.createElement('div');
-    progBg.className = 'block-progress-bg';
-    progBg.style.background = block.color + '15';
-    progBg.style.width = '0%';
-    progBg.id = 'blockProg-' + block.id;
-    card.appendChild(progBg);
-
-    // Main row
-    const main = document.createElement('div');
-    main.className = 'block-main';
-
-    main.innerHTML = `
-      <div class="block-color-bar" style="background:${block.color}"></div>
-      ${!state.playing ? '<div class="block-grip"><svg width="16" height="16" viewBox="0 0 24 24" fill="#FFD600"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></div>' : ''}
-      <div class="block-info">
-        <div class="block-name" style="color:${block.color}">${block.name}</div>
-        <div class="block-meta">
-          <span>${block.bars} comp.</span>
-          ${block.claqueta ? '<span>🔔 claq</span>' : ''}
-          ${block.voice ? '<span>🎙 voz</span>' : ''}
-        </div>
-      </div>
-      <div class="block-beat-display" id="beatDisp-${block.id}" style="display:none">
-        <div class="block-beat-num" style="color:${block.color}">-</div>
-        <div class="block-beat-bar">-</div>
-      </div>
-      ${!state.playing ? '<div class="block-chevron"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,9 12,15 18,9"/></svg></div>' : ''}
-    `;
-
-    if (!state.playing) {
-      main.addEventListener('click', () => {
-        state.editingId = state.editingId === block.id ? null : block.id;
-        render();
-      });
-    }
-
-    card.appendChild(main);
-
-    // Edit panel
-    if (!state.playing) {
-      const edit = document.createElement('div');
-      edit.className = 'block-edit' + (state.editingId === block.id ? ' open' : '');
-      edit.innerHTML = buildEditHTML(block);
-      card.appendChild(edit);
-    }
-
-    // Drag events
-    if (!state.playing) {
-      card.addEventListener('dragstart', (e) => {
-        e.dataTransfer.setData('text/plain', idx);
-        card.classList.add('dragging');
-      });
-      card.addEventListener('dragend', () => card.classList.remove('dragging'));
-      card.addEventListener('dragover', (e) => { e.preventDefault(); card.classList.add('drag-over'); });
-      card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
-      card.addEventListener('drop', (e) => {
-        e.preventDefault();
-        card.classList.remove('drag-over');
-        const fromIdx = parseInt(e.dataTransfer.getData('text/plain'));
-        const toIdx = idx;
-        if (fromIdx !== toIdx) {
-          const [moved] = state.blocks.splice(fromIdx, 1);
-          state.blocks.splice(toIdx, 0, moved);
-          render();
-        }
-      });
-    }
-
-    list.appendChild(card);
-  });
-
-  // Add button
-  if (!state.playing) {
-    const addArea = document.createElement('div');
-    if (!state.showAddPanel) {
-      addArea.innerHTML = `<button class="add-btn" id="addBtn">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Añadir bloque
-      </button>`;
-      addArea.querySelector('#addBtn').addEventListener('click', () => {
-        state.showAddPanel = true; render();
-      });
-    } else {
-      addArea.innerHTML = `
-        <div class="add-panel open">
-          <div class="add-panel-title">COMPASES DEL BLOQUE</div>
-          <div class="add-sizes">
-            ${BLOCK_SIZES.map(s => `<button class="add-size-btn" data-size="${s}">${s}</button>`).join('')}
-          </div>
-          <button class="add-cancel" id="addCancel">Cancelar</button>
-        </div>`;
-      addArea.querySelectorAll('.add-size-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          addBlock(parseInt(btn.dataset.size));
-        });
-      });
-      addArea.querySelector('#addCancel').addEventListener('click', () => {
-        state.showAddPanel = false; render();
-      });
-    }
-    list.appendChild(addArea);
-  }
-}
-
-function buildEditHTML(block) {
-  const presetBtns = PRESET_NAMES.map(n =>
-    `<button class="preset-tag ${block.name===n?'active':''}" data-preset="${n}">${n}</button>`
-  ).join('');
-  const barsBtns = BLOCK_SIZES.map(s =>
-    `<button class="bars-btn ${block.bars===s?'active':''}" data-bars="${s}">${s}</button>`
-  ).join('');
-  const colorSwatches = BLOCK_COLORS.map(c =>
-    `<button class="color-swatch ${block.color===c?'active':''}" data-color="${c}" style="background:${c}"></button>`
-  ).join('');
-
-  return `
-    <div>
-      <span class="edit-label">NOMBRE</span>
-      <input class="edit-input" value="${block.name}" data-field="name" data-id="${block.id}">
-      <div class="preset-tags">${presetBtns}</div>
-    </div>
-    <div>
-      <span class="edit-label">COMPASES</span>
-      <div class="bars-row">${barsBtns}</div>
-    </div>
-    <div>
-      <span class="edit-label">COLOR</span>
-      <div class="colors-row">${colorSwatches}</div>
-    </div>
-    <div class="toggle-row">
-      <button class="toggle-btn ${block.claqueta?'on':''}" data-toggle="claqueta" data-id="${block.id}">🔔 Claqueta</button>
-      <button class="toggle-btn ${block.voice?'on':''}" data-toggle="voice" data-id="${block.id}">🎙 Voz</button>
-    </div>
-    <div class="action-row">
-      <button class="action-btn" data-action="duplicate" data-id="${block.id}">📋 Duplicar</button>
-      <button class="action-btn danger" data-action="delete" data-id="${block.id}">🗑 Eliminar</button>
-    </div>
-  `;
-}
-
-// ── Event Delegation ──
-document.getElementById('blockList').addEventListener('click', (e) => {
-  const target = e.target.closest('[data-preset]');
-  if (target) {
-    const block = state.blocks.find(b => b.id === state.editingId);
-    if (block) { block.name = target.dataset.preset; render(); }
-    return;
-  }
-  const barsTarget = e.target.closest('[data-bars]');
-  if (barsTarget) {
-    const block = state.blocks.find(b => b.id === state.editingId);
-    if (block) { block.bars = parseInt(barsTarget.dataset.bars); render(); }
-    return;
-  }
-  const colorTarget = e.target.closest('[data-color]');
-  if (colorTarget) {
-    const block = state.blocks.find(b => b.id === state.editingId);
-    if (block) { block.color = colorTarget.dataset.color; render(); }
-    return;
-  }
-  const toggleTarget = e.target.closest('[data-toggle]');
-  if (toggleTarget) {
-    const id = parseInt(toggleTarget.dataset.id);
-    const block = state.blocks.find(b => b.id === id);
-    if (block) {
-      const field = toggleTarget.dataset.toggle;
-      block[field] = !block[field];
-      render();
-    }
-    return;
-  }
-  const actionTarget = e.target.closest('[data-action]');
-  if (actionTarget) {
-    const id = parseInt(actionTarget.dataset.id);
-    const action = actionTarget.dataset.action;
-    if (action === 'delete') {
-      state.blocks = state.blocks.filter(b => b.id !== id);
-      if (state.editingId === id) state.editingId = null;
-      render();
-    } else if (action === 'duplicate') {
-      const idx = state.blocks.findIndex(b => b.id === id);
-      if (idx > -1) {
-        const clone = { ...state.blocks[idx], id: state.nextId++, name: state.blocks[idx].name + ' (copia)' };
-        state.blocks.splice(idx + 1, 0, clone);
-        render();
-      }
-    }
-  }
-});
-
-document.getElementById('blockList').addEventListener('input', (e) => {
-  if (e.target.dataset.field === 'name') {
-    const id = parseInt(e.target.dataset.id);
-    const block = state.blocks.find(b => b.id === id);
-    if (block) block.name = e.target.value;
-    updateDuration();
-  }
-});
-
-// ── Header controls ──
-document.getElementById('bpmInput').addEventListener('change', (e) => {
-  state.bpm = Math.max(30, Math.min(300, parseInt(e.target.value) || 120));
-  e.target.value = state.bpm;
-  updateDuration(); updateBottomBar();
-});
-document.getElementById('bpmUp').addEventListener('click', () => {
-  state.bpm = Math.min(300, state.bpm + 1);
-  document.getElementById('bpmInput').value = state.bpm;
-  updateDuration(); updateBottomBar();
-});
-document.getElementById('bpmDown').addEventListener('click', () => {
-  state.bpm = Math.max(30, state.bpm - 1);
-  document.getElementById('bpmInput').value = state.bpm;
-  updateDuration(); updateBottomBar();
-});
-
-// Time signature buttons
-const tsBox = document.getElementById('tsBox');
-[3,4,6].forEach(t => {
-  const btn = document.createElement('button');
-  btn.className = 'ts-btn' + (state.ts === t ? ' active' : '');
-  btn.textContent = t + '/4';
-  btn.addEventListener('click', () => {
+@@ -1068,62 +1286,65 @@ const tsBox = document.getElementById('tsBox');
     state.ts = t;
     tsBox.querySelectorAll('.ts-btn').forEach(b => b.classList.toggle('active', parseInt(b.textContent) === t));
     updateDuration(); updateBottomBar();
@@ -1031,6 +1073,7 @@ document.getElementById('reverbIntSlider').addEventListener('input', (e) => {
 });
 
 // ── PLAY ──
+document.getElementById('playBtn').addEventListener('click', () => {
 document.getElementById('playBtn').addEventListener('click', async () => {
   if (state.playing) {
     audio.stop();
@@ -1038,6 +1081,7 @@ document.getElementById('playBtn').addEventListener('click', async () => {
     document.getElementById('globalProgress').classList.remove('show');
     document.getElementById('reverbGlow').classList.remove('show');
     document.getElementById('voiceIndicator').classList.remove('show');
+    document.getElementById('fullscreenPulse').classList.remove('show');
     render();
     return;
   }
@@ -1070,11 +1114,7 @@ document.getElementById('playBtn').addEventListener('click', async () => {
       state.blocks.forEach((b, i) => {
         const card = document.getElementById('block-' + b.id);
         const disp = document.getElementById('beatDisp-' + b.id);
-        const prog = document.getElementById('blockProg-' + b.id);
-        if (!card) return;
-
-        if (i === ps.blockIndex) {
-          card.style.borderColor = b.color;
+@@ -1135,114 +1356,112 @@ document.getElementById('playBtn').addEventListener('click', () => {
           card.style.borderWidth = '2px';
           card.style.boxShadow = `0 0 20px ${b.color}33`;
           if (disp) {
@@ -1100,6 +1140,7 @@ document.getElementById('playBtn').addEventListener('click', async () => {
       document.getElementById('globalProgress').classList.remove('show');
       document.getElementById('reverbGlow').classList.remove('show');
       document.getElementById('voiceIndicator').classList.remove('show');
+      document.getElementById('fullscreenPulse').classList.remove('show');
       render();
     }
   );
@@ -1126,6 +1167,7 @@ document.getElementById('exportBtn').addEventListener('click', async () => {
   label.textContent = `${estMin}:${String(estSec).padStart(2,'0')}`;
 
   try {
+    const blob = await exportRealtime(
     await ensureAudioUnlocked();
 
     const blob = await exportWav(
@@ -1151,12 +1193,15 @@ document.getElementById('exportBtn').addEventListener('click', async () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `bandmap_${state.bpm}bpm.wav`;
+    a.download = `bandmap_${state.bpm}bpm.webm`;
     a.click();
     URL.revokeObjectURL(url);
+    // Save/share (Drive / Files / folder picker when available)
+    await saveAudioFile(blob, `bandmap_${state.bpm}bpm.wav`);
 
     setTimeout(() => {
       bar.style.width = '0%';
+      label.textContent = 'REC';
       label.textContent = 'WAV';
       btn.classList.remove('disabled');
       playBtn.classList.remove('disabled');
@@ -1165,6 +1210,7 @@ document.getElementById('exportBtn').addEventListener('click', async () => {
   } catch(e) {
     console.error(e);
     bar.style.width = '0%';
+    label.textContent = 'REC';
     label.textContent = 'WAV';
     btn.classList.remove('disabled');
     playBtn.classList.remove('disabled');
@@ -1191,4 +1237,3 @@ function addBlock(bars) {
 render();
 </script>
 </body>
-</html>
