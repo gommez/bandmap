@@ -16,14 +16,15 @@
     --font: 'IBM Plex Mono', 'SF Mono', monospace;
   }
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html, body { height:100%; overflow:hidden; background:var(--bg); color:var(--y); font-family:var(--font); }
+  html, body { min-height:100%; overflow-x:hidden; overflow-y:auto; background:var(--bg); color:var(--y); font-family:var(--font); }
   input, button, select { font-family:var(--font); }
   button { cursor:pointer; border:none; background:none; color:var(--y); }
   input[type=range] { width:100%; accent-color:var(--y); }
 
   #app {
-    max-width:480px; margin:0 auto; height:100vh; height:100dvh;
-    display:flex; flex-direction:column; position:relative; overflow:hidden;
+    max-width:480px; margin:0 auto; min-height:100vh; min-height:100dvh;
+    display:flex; flex-direction:column; position:relative; overflow-y:auto; overflow-x:hidden;
+    -webkit-overflow-scrolling:touch;
   }
 
   /* ── Header ── */
@@ -70,7 +71,7 @@
 
   /* ── Block List ── */
   .block-list {
-    flex:1; overflow-y:auto; overflow-x:hidden; padding:10px 16px 130px;
+    flex:1; overflow-y:visible; overflow-x:hidden; padding:10px 16px 16px;
     display:flex; flex-direction:column; gap:6px;
     -webkit-overflow-scrolling:touch;
   }
@@ -171,7 +172,7 @@
 
   /* ── Progress Bar ── */
   .global-progress {
-    position:absolute; bottom:72px; left:0; right:0; height:3px;
+    position:sticky; bottom:72px; left:0; right:0; height:3px;
     background:var(--border); z-index:200; display:none;
   }
   .global-progress.show { display:block; }
@@ -186,7 +187,7 @@
 
   /* ── Bottom Bar ── */
   .bottom-bar {
-    position:absolute; bottom:0; left:0; right:0;
+    position:sticky; bottom:0; left:0; right:0;
     background:var(--bg); border-top:1px solid var(--border);
     padding:10px 16px; padding-bottom:max(10px, env(safe-area-inset-bottom));
     display:flex; gap:10px; align-items:center; z-index:200;
@@ -287,7 +288,7 @@
     <div class="setting-row" style="margin-bottom:0">
       <div style="display:flex;align-items:center;gap:8px;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2"><path d="M12,1a3,3 0 0,0-3,3v8a3,3 0 0,0,6,0V4A3,3 0 0,0,12,1Z"/><path d="M19,10v2a7,7 0 0,1-14,0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-        <span style="font-size:10px;opacity:.45">La exportación graba en tiempo real para incluir las voces. Suena por el altavoz durante el proceso.</span>
+        <span style="font-size:10px;opacity:.45">Exportación directa a WAV. En iPhone, la voz del sistema puede variar; los conteos siempre suenan.</span>
       </div>
     </div>
   </div>
@@ -315,7 +316,7 @@
     <button class="export-btn disabled" id="exportBtn">
       <div class="export-progress" id="exportProgress"></div>
       <svg viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2" stroke-linecap="round"><path d="M21,15v4a2,2 0 0,1-2,2H5a2,2 0 0,1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      <span id="exportLabel">REC</span>
+      <span id="exportLabel">WAV</span>
     </button>
   </div>
 </div>
@@ -578,196 +579,136 @@ function showVoiceIndicator(text) {
 }
 
 // ═══════════════════════════════════════════════════
-//  REAL-TIME EXPORT (captures voice + clicks)
+//  AUDIO HELPERS (iOS unlock + WAV export)
 // ═══════════════════════════════════════════════════
-// Strategy: Play the track in real-time through the AudioContext,
-// capture the stream with MediaRecorder. Speech synthesis audio
-// is captured by routing through a MediaStreamDestination that
-// merges with the oscillator output.
-
-async function exportRealtime(blocks, bpm, ts, reverbBase, reverbInt, onProgress, onFinish) {
-  // Create a fresh AudioContext for export
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const masterGain = ctx.createGain();
-  masterGain.gain.value = 0.5;
-
-  // Reverb chain
-  const sr = ctx.sampleRate;
-  const impLen = sr * 2;
-  const imp = ctx.createBuffer(2, impLen, sr);
-  for (let ch = 0; ch < 2; ch++) {
-    const d = imp.getChannelData(ch);
-    for (let i = 0; i < impLen; i++) d[i] = (Math.random()*2-1) * Math.pow(1-i/impLen, 2.5);
-  }
-  const convolver = ctx.createConvolver(); convolver.buffer = imp;
-  const reverbGain = ctx.createGain(); reverbGain.gain.value = reverbBase;
-  const dryGain = ctx.createGain(); dryGain.gain.value = 1 - reverbBase;
-
-  masterGain.connect(dryGain);
-  masterGain.connect(convolver);
-  convolver.connect(reverbGain);
-
-  // Create MediaStream destination for recording
-  const dest = ctx.createMediaStreamDestination();
-  dryGain.connect(dest);
-  reverbGain.connect(dest);
-  // Also connect to speakers so speechSynthesis timing is correct
-  dryGain.connect(ctx.destination);
-  reverbGain.connect(ctx.destination);
-
-  // MediaRecorder
-  const chunks = [];
-  const recorder = new MediaRecorder(dest.stream, {
-    mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
-  });
-  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-
-  const recordingDone = new Promise(resolve => {
-    recorder.onstop = () => resolve();
-  });
-
-  recorder.start();
-
-  // Helper
-  function eClick(freq, vol, dur = 0.04) {
-    const t = ctx.currentTime;
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.frequency.value = freq; o.type = "sine";
-    g.gain.setValueAtTime(vol, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    o.connect(g); g.connect(masterGain);
-    o.start(t); o.stop(t + dur);
+async function ensureAudioUnlocked() {
+  audio.init();
+  if (audio.ctx && audio.ctx.state === 'suspended') {
+    await audio.ctx.resume();
   }
 
-  function eCountTone(idx) {
-    const freqs = [1600, 1800, 2000, 2400];
-    const vols = [0.3, 0.3, 0.35, 0.5];
-    const durs = [0.06, 0.06, 0.06, 0.09];
-    const t = ctx.currentTime;
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.frequency.value = freqs[idx] || 2400; o.type = "triangle";
-    g.gain.setValueAtTime(vols[idx] || 0.4, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + (durs[idx] || 0.07));
-    o.connect(g); g.connect(masterGain);
-    o.start(t); o.stop(t + (durs[idx] || 0.07));
+  // iOS/Safari unlock tone (inaudible but starts audio session)
+  if (audio.ctx) {
+    const b = audio.ctx.createBuffer(1, 1, audio.ctx.sampleRate);
+    const s = audio.ctx.createBufferSource();
+    s.buffer = b;
+    s.connect(audio.ctx.destination);
+    s.start(0);
+  }
+}
+
+function addPulse(data, sampleRate, startSec, freq, gain, durSec, type = 'sine') {
+  const start = Math.max(0, Math.floor(startSec * sampleRate));
+  const len = Math.max(1, Math.floor(durSec * sampleRate));
+  for (let i = 0; i < len && (start + i) < data.length; i++) {
+    const t = i / sampleRate;
+    const env = Math.exp(-6 * (i / len));
+    const ph = 2 * Math.PI * freq * t;
+    const wave = type === 'triangle' ? (2 / Math.PI) * Math.asin(Math.sin(ph)) : Math.sin(ph);
+    data[start + i] += wave * gain * env;
+  }
+}
+
+function encodeWavFromMono(floatData, sampleRate = 48000) {
+  const bytesPerSample = 2;
+  const blockAlign = bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = floatData.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  let off = 0;
+  const wstr = (s) => { for (let i = 0; i < s.length; i++) view.setUint8(off++, s.charCodeAt(i)); };
+
+  wstr('RIFF');
+  view.setUint32(off, 36 + dataSize, true); off += 4;
+  wstr('WAVE');
+  wstr('fmt ');
+  view.setUint32(off, 16, true); off += 4;
+  view.setUint16(off, 1, true); off += 2; // PCM
+  view.setUint16(off, 1, true); off += 2; // mono
+  view.setUint32(off, sampleRate, true); off += 4;
+  view.setUint32(off, byteRate, true); off += 4;
+  view.setUint16(off, blockAlign, true); off += 2;
+  view.setUint16(off, 16, true); off += 2;
+  wstr('data');
+  view.setUint32(off, dataSize, true); off += 4;
+
+  for (let i = 0; i < floatData.length; i++, off += 2) {
+    const s = Math.max(-1, Math.min(1, floatData[i]));
+    view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
   }
 
-  function eSpeak(text, rate = 1.8) {
-    if (!('speechSynthesis' in window)) return;
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'es-ES'; u.rate = rate; u.pitch = 0.9; u.volume = 1;
-    speechSynthesis.speak(u);
-  }
+  return new Blob([buffer], { type: 'audio/wav' });
+}
 
-  function setRev(wet) {
-    reverbGain.gain.value = Math.min(1, wet);
-    dryGain.gain.value = Math.max(0, 1 - wet);
-  }
-
-  // ── Real-time playback loop ──
-  const interval = 60000 / bpm;
+async function exportWav(blocks, bpm, ts, reverbBase, reverbInt, onProgress, onFinish) {
+  const sampleRate = 48000;
+  const interval = 60 / bpm;
   const totalBeats = blocks.reduce((s, b) => s + b.bars * ts, 0);
-  let globalBeat = 0;
-  let blockIdx = 0;
-  let beatInBlock = 0;
+  const totalSecs = totalBeats * interval;
+  const tail = 1.2;
+  const data = new Float32Array(Math.ceil((totalSecs + tail) * sampleRate));
 
-  return new Promise((resolve) => {
-    const tick = () => {
-      if (blockIdx >= blocks.length) {
-        // Wait a moment for reverb tail, then stop
-        setTimeout(() => {
-          recorder.stop();
-          recordingDone.then(() => {
-            ctx.close();
-            const blob = new Blob(chunks, { type: 'audio/webm' });
-            resolve(blob);
-          });
-        }, 1500);
-        onFinish();
-        return;
-      }
+  const clickDur = { strong: 0.08, down: 0.05, normal: 0.03, claq: 0.04 };
+  const countFreqs = [1600, 1800, 2000, 2400];
+  const countDurs = [0.06, 0.06, 0.06, 0.09];
 
-      const block = blocks[blockIdx];
-      const totalBlockBeats = block.bars * ts;
+  let beat = 0;
+  for (let blockIdx = 0; blockIdx < blocks.length; blockIdx++) {
+    const block = blocks[blockIdx];
+    const totalBlockBeats = block.bars * ts;
+
+    for (let beatInBlock = 0; beatInBlock < totalBlockBeats; beatInBlock++) {
+      const t = beat * interval;
       const beatInBar = beatInBlock % ts;
       const barInBlock = Math.floor(beatInBlock / ts);
-
-      // Reverb ramp
-      const progress = beatInBlock / totalBlockBeats;
-      let revAmt = reverbBase;
-      if (progress > 0.7) {
-        const rp = (progress - 0.7) / 0.3;
-        revAmt = reverbBase + (0.9 - reverbBase) * Math.pow(rp, 2 - reverbInt * 1.5);
-      }
-      setRev(revAmt);
-
       const isDownbeat = beatInBar === 0;
       const isLastBar = barInBlock === block.bars - 1;
       const hasNext = blockIdx < blocks.length - 1;
       const isClaqueta = block.claqueta && isLastBar && hasNext;
       const isBlockEntrance = beatInBlock === 0;
 
-      // CLICK
+      const progress = beatInBlock / totalBlockBeats;
+      let revAmt = reverbBase;
+      if (progress > 0.7) {
+        const rp = (progress - 0.7) / 0.3;
+        revAmt = reverbBase + (0.9 - reverbBase) * Math.pow(rp, 2 - reverbInt * 1.5);
+      }
+      const wetBoost = 1 + (revAmt * 0.25);
+
       if (isBlockEntrance) {
-        eClick(1400, 0.85, 0.08);
-        eClick(700, 0.35, 0.06);
+        addPulse(data, sampleRate, t, 1400, 0.85 * wetBoost, clickDur.strong, 'sine');
+        addPulse(data, sampleRate, t, 700, 0.35 * wetBoost, 0.06, 'sine');
       } else if (isClaqueta) {
-        eClick(isDownbeat ? 1400 : 1000, isDownbeat ? 0.7 : 0.5, isDownbeat ? 0.06 : 0.04);
-        eClick(2200, 0.25, 0.015);
+        addPulse(data, sampleRate, t, isDownbeat ? 1400 : 1000, (isDownbeat ? 0.7 : 0.5) * wetBoost, isDownbeat ? 0.06 : clickDur.claq, 'sine');
+        addPulse(data, sampleRate, t, 2200, 0.25 * wetBoost, 0.015, 'triangle');
       } else if (isDownbeat) {
-        eClick(1200, 0.5, 0.05);
+        addPulse(data, sampleRate, t, 1200, 0.5 * wetBoost, clickDur.down, 'sine');
       } else {
-        eClick(800, 0.25, 0.03);
+        addPulse(data, sampleRate, t, 800, 0.25 * wetBoost, clickDur.normal, 'sine');
       }
 
-      // VOICE + COUNT on last bar
       if (hasNext && block.voice && isLastBar) {
-        const nextName = blocks[blockIdx + 1].name;
         if (ts >= 4) {
           const countStart = ts - 4;
           const countBeat = beatInBar - countStart;
-          if (countBeat === 0) {
-            eCountTone(0);
-            eSpeak("Y " + nextName, 1.8);
-          } else if (countBeat === 1) {
-            eCountTone(1);
-          } else if (countBeat === 2) {
-            eCountTone(2);
-          } else if (countBeat === 3) {
-            eCountTone(3);
-            eSpeak("tres y", 2.0);
+          if (countBeat >= 0 && countBeat <= 3) {
+            addPulse(data, sampleRate, t, countFreqs[countBeat], 0.42, countDurs[countBeat], 'triangle');
           }
-        } else if (ts === 3) {
-          if (beatInBar === 0) {
-            eCountTone(0);
-            eSpeak("Y " + nextName, 1.8);
-          } else if (beatInBar === 1) {
-            eCountTone(2);
-          } else if (beatInBar === 2) {
-            eCountTone(3);
-            eSpeak("tres y", 2.0);
-          }
+        } else if (ts === 3 && beatInBar <= 2) {
+          const map = [0, 2, 3][beatInBar];
+          addPulse(data, sampleRate, t, countFreqs[map], 0.42, countDurs[map], 'triangle');
         }
       }
 
-      onProgress(globalBeat / totalBeats);
-      beatInBlock++;
-      globalBeat++;
+      beat++;
+      onProgress(beat / totalBeats);
+    }
+  }
 
-      if (beatInBlock >= totalBlockBeats) {
-        beatInBlock = 0;
-        blockIdx++;
-        setRev(reverbBase);
-      }
-
-      setTimeout(tick, interval);
-    };
-
-    tick();
-  });
+  onFinish();
+  return encodeWavFromMono(data, sampleRate);
 }
 
 // ═══════════════════════════════════════════════════
@@ -1090,7 +1031,7 @@ document.getElementById('reverbIntSlider').addEventListener('input', (e) => {
 });
 
 // ── PLAY ──
-document.getElementById('playBtn').addEventListener('click', () => {
+document.getElementById('playBtn').addEventListener('click', async () => {
   if (state.playing) {
     audio.stop();
     state.playing = false;
@@ -1101,6 +1042,8 @@ document.getElementById('playBtn').addEventListener('click', () => {
     return;
   }
   if (state.blocks.length === 0) return;
+
+  await ensureAudioUnlocked();
 
   state.playing = true;
   state.editingId = null;
@@ -1183,7 +1126,9 @@ document.getElementById('exportBtn').addEventListener('click', async () => {
   label.textContent = `${estMin}:${String(estSec).padStart(2,'0')}`;
 
   try {
-    const blob = await exportRealtime(
+    await ensureAudioUnlocked();
+
+    const blob = await exportWav(
       state.blocks, state.bpm, state.ts, state.reverbBase, state.reverbIntensity,
       (pct) => {
         bar.style.width = (pct * 100) + '%';
@@ -1206,13 +1151,13 @@ document.getElementById('exportBtn').addEventListener('click', async () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `bandmap_${state.bpm}bpm.webm`;
+    a.download = `bandmap_${state.bpm}bpm.wav`;
     a.click();
     URL.revokeObjectURL(url);
 
     setTimeout(() => {
       bar.style.width = '0%';
-      label.textContent = 'REC';
+      label.textContent = 'WAV';
       btn.classList.remove('disabled');
       playBtn.classList.remove('disabled');
       exporting = false;
@@ -1220,7 +1165,7 @@ document.getElementById('exportBtn').addEventListener('click', async () => {
   } catch(e) {
     console.error(e);
     bar.style.width = '0%';
-    label.textContent = 'REC';
+    label.textContent = 'WAV';
     btn.classList.remove('disabled');
     playBtn.classList.remove('disabled');
     exporting = false;
