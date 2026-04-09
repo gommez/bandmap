@@ -287,7 +287,7 @@
     <div class="setting-row" style="margin-bottom:0">
       <div style="display:flex;align-items:center;gap:8px;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2"><path d="M12,1a3,3 0 0,0-3,3v8a3,3 0 0,0,6,0V4A3,3 0 0,0,12,1Z"/><path d="M19,10v2a7,7 0 0,1-14,0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-        <span style="font-size:10px;opacity:.45">Las voces usan Web Speech API en preview. En WAV se sustituyen por tonos.</span>
+        <span style="font-size:10px;opacity:.45">La exportación graba en tiempo real para incluir las voces. Suena por el altavoz durante el proceso.</span>
       </div>
     </div>
   </div>
@@ -315,7 +315,7 @@
     <button class="export-btn disabled" id="exportBtn">
       <div class="export-progress" id="exportProgress"></div>
       <svg viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2" stroke-linecap="round"><path d="M21,15v4a2,2 0 0,1-2,2H5a2,2 0 0,1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      <span id="exportLabel">WAV</span>
+      <span id="exportLabel">REC</span>
     </button>
   </div>
 </div>
@@ -578,128 +578,196 @@ function showVoiceIndicator(text) {
 }
 
 // ═══════════════════════════════════════════════════
-//  OFFLINE RENDERER (WAV export)
+//  REAL-TIME EXPORT (captures voice + clicks)
 // ═══════════════════════════════════════════════════
-async function renderToWav(blocks, bpm, ts, reverbBase, reverbInt) {
-  const sr = 44100;
-  const interval = 60 / bpm;
-  const totalBeats = blocks.reduce((s, b) => s + b.bars * ts, 0);
-  const duration = totalBeats * interval + 3;
-  const offCtx = new OfflineAudioContext(2, Math.ceil(duration * sr), sr);
+// Strategy: Play the track in real-time through the AudioContext,
+// capture the stream with MediaRecorder. Speech synthesis audio
+// is captured by routing through a MediaStreamDestination that
+// merges with the oscillator output.
 
-  // Reverb
+async function exportRealtime(blocks, bpm, ts, reverbBase, reverbInt, onProgress, onFinish) {
+  // Create a fresh AudioContext for export
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const masterGain = ctx.createGain();
+  masterGain.gain.value = 0.5;
+
+  // Reverb chain
+  const sr = ctx.sampleRate;
   const impLen = sr * 2;
-  const imp = offCtx.createBuffer(2, impLen, sr);
+  const imp = ctx.createBuffer(2, impLen, sr);
   for (let ch = 0; ch < 2; ch++) {
     const d = imp.getChannelData(ch);
     for (let i = 0; i < impLen; i++) d[i] = (Math.random()*2-1) * Math.pow(1-i/impLen, 2.5);
   }
-  const conv = offCtx.createConvolver(); conv.buffer = imp;
-  const wet = offCtx.createGain(); const dry = offCtx.createGain();
-  const master = offCtx.createGain(); master.gain.value = 0.5;
-  master.connect(dry); dry.connect(offCtx.destination);
-  master.connect(conv); conv.connect(wet); wet.connect(offCtx.destination);
+  const convolver = ctx.createConvolver(); convolver.buffer = imp;
+  const reverbGain = ctx.createGain(); reverbGain.gain.value = reverbBase;
+  const dryGain = ctx.createGain(); dryGain.gain.value = 1 - reverbBase;
 
-  function schedOsc(time, freq, vol, dur, type = "sine") {
-    const o = offCtx.createOscillator();
-    const g = offCtx.createGain();
-    o.frequency.value = freq; o.type = type;
-    g.gain.setValueAtTime(vol, time);
-    g.gain.exponentialRampToValueAtTime(0.001, time + dur);
-    o.connect(g); g.connect(master);
-    o.start(time); o.stop(time + dur);
+  masterGain.connect(dryGain);
+  masterGain.connect(convolver);
+  convolver.connect(reverbGain);
+
+  // Create MediaStream destination for recording
+  const dest = ctx.createMediaStreamDestination();
+  dryGain.connect(dest);
+  reverbGain.connect(dest);
+  // Also connect to speakers so speechSynthesis timing is correct
+  dryGain.connect(ctx.destination);
+  reverbGain.connect(ctx.destination);
+
+  // MediaRecorder
+  const chunks = [];
+  const recorder = new MediaRecorder(dest.stream, {
+    mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
+  });
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+  const recordingDone = new Promise(resolve => {
+    recorder.onstop = () => resolve();
+  });
+
+  recorder.start();
+
+  // Helper
+  function eClick(freq, vol, dur = 0.04) {
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.frequency.value = freq; o.type = "sine";
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(masterGain);
+    o.start(t); o.stop(t + dur);
   }
 
-  let globalBeat = 0;
-  for (let bi = 0; bi < blocks.length; bi++) {
-    const block = blocks[bi];
-    const totalBlockBeats = block.bars * ts;
+  function eCountTone(idx) {
+    const freqs = [1600, 1800, 2000, 2400];
+    const vols = [0.3, 0.3, 0.35, 0.5];
+    const durs = [0.06, 0.06, 0.06, 0.09];
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.frequency.value = freqs[idx] || 2400; o.type = "triangle";
+    g.gain.setValueAtTime(vols[idx] || 0.4, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + (durs[idx] || 0.07));
+    o.connect(g); g.connect(masterGain);
+    o.start(t); o.stop(t + (durs[idx] || 0.07));
+  }
 
-    for (let bib = 0; bib < totalBlockBeats; bib++) {
-      const time = globalBeat * interval;
-      const beatInBar = bib % ts;
-      const barInBlock = Math.floor(bib / ts);
+  function eSpeak(text, rate = 1.8) {
+    if (!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'es-ES'; u.rate = rate; u.pitch = 0.9; u.volume = 1;
+    speechSynthesis.speak(u);
+  }
+
+  function setRev(wet) {
+    reverbGain.gain.value = Math.min(1, wet);
+    dryGain.gain.value = Math.max(0, 1 - wet);
+  }
+
+  // ── Real-time playback loop ──
+  const interval = 60000 / bpm;
+  const totalBeats = blocks.reduce((s, b) => s + b.bars * ts, 0);
+  let globalBeat = 0;
+  let blockIdx = 0;
+  let beatInBlock = 0;
+
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (blockIdx >= blocks.length) {
+        // Wait a moment for reverb tail, then stop
+        setTimeout(() => {
+          recorder.stop();
+          recordingDone.then(() => {
+            ctx.close();
+            const blob = new Blob(chunks, { type: 'audio/webm' });
+            resolve(blob);
+          });
+        }, 1500);
+        onFinish();
+        return;
+      }
+
+      const block = blocks[blockIdx];
+      const totalBlockBeats = block.bars * ts;
+      const beatInBar = beatInBlock % ts;
+      const barInBlock = Math.floor(beatInBlock / ts);
+
+      // Reverb ramp
+      const progress = beatInBlock / totalBlockBeats;
+      let revAmt = reverbBase;
+      if (progress > 0.7) {
+        const rp = (progress - 0.7) / 0.3;
+        revAmt = reverbBase + (0.9 - reverbBase) * Math.pow(rp, 2 - reverbInt * 1.5);
+      }
+      setRev(revAmt);
+
       const isDownbeat = beatInBar === 0;
       const isLastBar = barInBlock === block.bars - 1;
-      const hasNext = bi < blocks.length - 1;
+      const hasNext = blockIdx < blocks.length - 1;
       const isClaqueta = block.claqueta && isLastBar && hasNext;
-      const isBlockEntrance = bib === 0;
-
-      // Reverb
-      const prog = bib / totalBlockBeats;
-      let rev = reverbBase;
-      if (prog > 0.7) {
-        const rp = (prog - 0.7) / 0.3;
-        rev = reverbBase + (0.9 - reverbBase) * Math.pow(rp, 2 - reverbInt * 1.5);
-      }
-      wet.gain.setValueAtTime(rev, time);
-      dry.gain.setValueAtTime(1 - rev, time);
+      const isBlockEntrance = beatInBlock === 0;
 
       // CLICK
       if (isBlockEntrance) {
-        schedOsc(time, 1400, 0.85, 0.08);
-        schedOsc(time, 700, 0.35, 0.06);
+        eClick(1400, 0.85, 0.08);
+        eClick(700, 0.35, 0.06);
       } else if (isClaqueta) {
-        schedOsc(time, isDownbeat ? 1400 : 1000, isDownbeat ? 0.7 : 0.5, isDownbeat ? 0.06 : 0.04);
-        schedOsc(time, 2200, 0.25, 0.015);
+        eClick(isDownbeat ? 1400 : 1000, isDownbeat ? 0.7 : 0.5, isDownbeat ? 0.06 : 0.04);
+        eClick(2200, 0.25, 0.015);
       } else if (isDownbeat) {
-        schedOsc(time, 1200, 0.5, 0.05);
+        eClick(1200, 0.5, 0.05);
       } else {
-        schedOsc(time, 800, 0.25, 0.03);
+        eClick(800, 0.25, 0.03);
       }
 
-      // COUNT tones on last bar
+      // VOICE + COUNT on last bar
       if (hasNext && block.voice && isLastBar) {
-        const countFreqs = [1600, 1800, 2000, 2400];
-        const countVols = [0.3, 0.3, 0.35, 0.5];
-        const countDurs = [0.06, 0.06, 0.06, 0.09];
+        const nextName = blocks[blockIdx + 1].name;
         if (ts >= 4) {
-          const cs = ts - 4;
-          const ci = beatInBar - cs;
-          if (ci >= 0 && ci < 4) {
-            schedOsc(time, countFreqs[ci], countVols[ci], countDurs[ci], "triangle");
+          const countStart = ts - 4;
+          const countBeat = beatInBar - countStart;
+          if (countBeat === 0) {
+            eCountTone(0);
+            eSpeak("Y " + nextName, 1.8);
+          } else if (countBeat === 1) {
+            eCountTone(1);
+          } else if (countBeat === 2) {
+            eCountTone(2);
+          } else if (countBeat === 3) {
+            eCountTone(3);
+            eSpeak("tres y", 2.0);
           }
-        } else if (ts === 3 && beatInBar < 3) {
-          schedOsc(time, countFreqs[beatInBar], countVols[beatInBar], countDurs[beatInBar], "triangle");
-        }
-
-        // Announce tone burst on first beat of last bar
-        if (beatInBar === 0) {
-          for (let n = 0; n < 3; n++) {
-            schedOsc(time + n * 0.06, 2000 + n * 200, 0.12, 0.05);
+        } else if (ts === 3) {
+          if (beatInBar === 0) {
+            eCountTone(0);
+            eSpeak("Y " + nextName, 1.8);
+          } else if (beatInBar === 1) {
+            eCountTone(2);
+          } else if (beatInBar === 2) {
+            eCountTone(3);
+            eSpeak("tres y", 2.0);
           }
         }
       }
 
+      onProgress(globalBeat / totalBeats);
+      beatInBlock++;
       globalBeat++;
-    }
-  }
 
-  const rendered = await offCtx.startRendering();
-  return bufferToWav(rendered);
-}
+      if (beatInBlock >= totalBlockBeats) {
+        beatInBlock = 0;
+        blockIdx++;
+        setRev(reverbBase);
+      }
 
-function bufferToWav(buf) {
-  const nc = buf.numberOfChannels, sr = buf.sampleRate;
-  const len = buf.length * nc * 2 + 44;
-  const ab = new ArrayBuffer(len);
-  const v = new DataView(ab);
-  const ws = (o, s) => { for (let i=0;i<s.length;i++) v.setUint8(o+i, s.charCodeAt(i)); };
-  ws(0,'RIFF'); v.setUint32(4,len-8,true); ws(8,'WAVE');
-  ws(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true);
-  v.setUint16(22,nc,true); v.setUint32(24,sr,true);
-  v.setUint32(28,sr*nc*2,true); v.setUint16(32,nc*2,true); v.setUint16(34,16,true);
-  ws(36,'data'); v.setUint32(40,buf.length*nc*2,true);
-  let off = 44;
-  const chs = []; for (let c=0;c<nc;c++) chs.push(buf.getChannelData(c));
-  for (let i=0;i<buf.length;i++) {
-    for (let c=0;c<nc;c++) {
-      const s = Math.max(-1, Math.min(1, chs[c][i]));
-      v.setInt16(off, s<0 ? s*0x8000 : s*0x7FFF, true);
-      off += 2;
-    }
-  }
-  return new Blob([ab], { type:'audio/wav' });
+      setTimeout(tick, interval);
+    };
+
+    tick();
+  });
 }
 
 // ═══════════════════════════════════════════════════
@@ -1095,40 +1163,67 @@ document.getElementById('playBtn').addEventListener('click', () => {
 });
 
 // ── EXPORT ──
+let exporting = false;
 document.getElementById('exportBtn').addEventListener('click', async () => {
-  if (state.blocks.length === 0 || state.playing) return;
+  if (state.blocks.length === 0 || state.playing || exporting) return;
+  exporting = true;
+
   const btn = document.getElementById('exportBtn');
   const bar = document.getElementById('exportProgress');
   const label = document.getElementById('exportLabel');
+  const playBtn = document.getElementById('playBtn');
   btn.classList.add('disabled');
-  label.textContent = '...';
+  playBtn.classList.add('disabled');
 
-  let pct = 0;
-  const prog = setInterval(() => { pct = Math.min(pct+5, 90); bar.style.width = pct+'%'; }, 200);
+  // Calculate duration for display
+  const totalBeats = state.blocks.reduce((s,b) => s + b.bars * state.ts, 0);
+  const totalSecs = totalBeats * (60 / state.bpm);
+  const estMin = Math.floor(totalSecs / 60);
+  const estSec = Math.floor(totalSecs % 60);
+  label.textContent = `${estMin}:${String(estSec).padStart(2,'0')}`;
 
   try {
-    const wav = await renderToWav(state.blocks, state.bpm, state.ts, state.reverbBase, state.reverbIntensity);
-    clearInterval(prog);
-    bar.style.width = '100%';
+    const blob = await exportRealtime(
+      state.blocks, state.bpm, state.ts, state.reverbBase, state.reverbIntensity,
+      (pct) => {
+        bar.style.width = (pct * 100) + '%';
+        // Update remaining time
+        const remaining = totalSecs * (1 - pct);
+        const rm = Math.floor(remaining / 60);
+        const rs = Math.floor(remaining % 60);
+        label.textContent = `${rm}:${String(rs).padStart(2,'0')}`;
+      },
+      () => {
+        label.textContent = '...';
+        bar.style.width = '95%';
+      }
+    );
 
-    const url = URL.createObjectURL(wav);
+    bar.style.width = '100%';
+    label.textContent = '✓';
+
+    // Download
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `bandmap_${state.bpm}bpm.wav`;
+    a.download = `bandmap_${state.bpm}bpm.webm`;
     a.click();
     URL.revokeObjectURL(url);
 
     setTimeout(() => {
       bar.style.width = '0%';
-      label.textContent = 'WAV';
+      label.textContent = 'REC';
       btn.classList.remove('disabled');
-    }, 800);
+      playBtn.classList.remove('disabled');
+      exporting = false;
+    }, 1200);
   } catch(e) {
     console.error(e);
-    clearInterval(prog);
     bar.style.width = '0%';
-    label.textContent = 'WAV';
+    label.textContent = 'REC';
     btn.classList.remove('disabled');
+    playBtn.classList.remove('disabled');
+    exporting = false;
   }
 });
 
