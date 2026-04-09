@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>BANDMAP</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.css" rel="stylesheet">
+<style>
+  :root {
+    --y: #FFD600;
+    --bg: #0A0A0A;
+    --card: #141414;
+    --border: #222;
+    --red: #FF1744;
+    --font: 'IBM Plex Mono', 'SF Mono', monospace;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; overflow:hidden; background:var(--bg); color:var(--y); font-family:var(--font); }
+  input, button, select { font-family:var(--font); }
+  button { cursor:pointer; border:none; background:none; color:var(--y); }
+  input[type=range] { width:100%; accent-color:var(--y); }
+
+  #app {
+    max-width:480px; margin:0 auto; height:100vh; height:100dvh;
+    display:flex; flex-direction:column; position:relative; overflow:hidden;
+  }
+
+  /* ── Header ── */
+  .header {
+    padding:14px 16px 10px; border-bottom:1px solid var(--border);
+    background:var(--bg); position:relative; z-index:100; flex-shrink:0;
+  }
+  .header-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .logo { display:flex; align-items:center; gap:8px; font-size:18px; font-weight:700; letter-spacing:3px; }
+  .controls-row { display:flex; gap:8px; }
+  .ctrl-box {
+    background:var(--card); border-radius:8px; padding:8px 12px;
+    border:1px solid var(--border); display:flex; align-items:center; gap:8px;
+  }
+  .ctrl-label { font-size:10px; opacity:.6; letter-spacing:1px; }
+  .bpm-input {
+    background:transparent; border:none; color:var(--y);
+    font-size:22px; font-weight:700; width:52px; text-align:center; outline:none;
+  }
+  .bpm-arrows { display:flex; flex-direction:column; gap:1px; }
+  .bpm-arrows button { padding:0; line-height:1; opacity:.7; font-size:12px; }
+  .bpm-arrows button:active { opacity:1; }
+  .ts-btn {
+    background:transparent; border:1px solid var(--y); border-radius:4px;
+    padding:3px 8px; font-size:13px; font-weight:700; transition:all .15s;
+  }
+  .ts-btn.active { background:var(--y); color:var(--bg); }
+  .duration-bar {
+    margin-top:6px; display:flex; justify-content:space-between;
+    font-size:10px; opacity:.4; letter-spacing:1px;
+  }
+
+  /* ── Settings Panel ── */
+  .settings-panel {
+    background:var(--card); border-bottom:1px solid var(--border); padding:14px 16px;
+    display:none; flex-shrink:0;
+  }
+  .settings-panel.open { display:block; }
+  .setting-row { margin-bottom:12px; }
+  .setting-header { display:flex; justify-content:space-between; margin-bottom:4px; }
+  .setting-header span:first-child { font-size:11px; opacity:.6; letter-spacing:1px; }
+  .setting-header span:last-child { font-size:11px; font-weight:700; }
+  .setting-labels { display:flex; justify-content:space-between; font-size:9px; opacity:.35; margin-top:2px; }
+
+  /* ── Block List ── */
+  .block-list {
+    flex:1; overflow-y:auto; overflow-x:hidden; padding:10px 16px 130px;
+    display:flex; flex-direction:column; gap:6px;
+    -webkit-overflow-scrolling:touch;
+  }
+  .empty-msg { text-align:center; padding:40px 20px; opacity:.25; font-size:13px; }
+
+  .block-card {
+    background:var(--card); border-radius:10px; border:1px solid var(--border);
+    transition:all .2s; overflow:hidden; position:relative;
+  }
+  .block-card.active {
+    border-width:2px; transform:scale(1.01);
+  }
+  .block-card.drag-over { border:2px dashed var(--y); }
+  .block-card.dragging { opacity:.35; }
+
+  .block-progress-bg {
+    position:absolute; top:0; left:0; height:100%; border-radius:10px;
+    transition:width .1s linear; pointer-events:none;
+  }
+
+  .block-main {
+    display:flex; align-items:center; padding:10px 12px; gap:8px;
+    position:relative; z-index:1;
+  }
+  .block-color-bar { width:4px; height:36px; border-radius:2px; flex-shrink:0; }
+  .block-grip { opacity:.25; flex-shrink:0; cursor:grab; }
+  .block-info { flex:1; min-width:0; }
+  .block-name { font-size:14px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .block-meta { font-size:10px; opacity:.45; display:flex; gap:8px; margin-top:1px; }
+  .block-meta svg { width:10px; height:10px; vertical-align:middle; }
+  .block-beat-display { text-align:center; flex-shrink:0; }
+  .block-beat-num { font-size:24px; font-weight:700; line-height:1; }
+  .block-beat-bar { font-size:9px; opacity:.45; }
+  .block-chevron { flex-shrink:0; opacity:.35; }
+
+  /* ── Edit Panel ── */
+  .block-edit {
+    padding:0 12px 12px; display:none; flex-direction:column; gap:10px;
+    border-top:1px solid var(--border); padding-top:10px;
+  }
+  .block-edit.open { display:flex; }
+  .edit-label { font-size:10px; opacity:.45; letter-spacing:1px; margin-bottom:4px; display:block; }
+  .edit-input {
+    width:100%; background:var(--bg); border:1px solid var(--border); border-radius:6px;
+    color:var(--y); padding:8px 10px; font-size:13px; outline:none;
+  }
+  .preset-tags { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+  .preset-tag {
+    border:1px solid var(--border); border-radius:4px; padding:2px 8px;
+    font-size:10px; transition:all .1s;
+  }
+  .preset-tag.active { background:var(--y); color:var(--bg); border-color:var(--y); }
+  .bars-row { display:flex; gap:6px; }
+  .bars-btn {
+    flex:1; border:1px solid var(--y); border-radius:6px; padding:8px 0;
+    font-size:15px; font-weight:700; transition:all .1s;
+  }
+  .bars-btn.active { background:var(--y); color:var(--bg); }
+  .colors-row { display:flex; flex-wrap:wrap; gap:6px; }
+  .color-swatch {
+    width:28px; height:28px; border-radius:6px; border:2px solid transparent;
+    transition:border .1s;
+  }
+  .color-swatch.active { border:3px solid white; }
+  .toggle-row { display:flex; gap:8px; }
+  .toggle-btn {
+    flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
+    border:1px solid var(--border); border-radius:6px; padding:8px;
+    font-size:11px; transition:all .1s;
+  }
+  .toggle-btn.on { background:rgba(255,214,0,.13); border-color:var(--y); }
+  .action-row { display:flex; gap:8px; }
+  .action-btn {
+    flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
+    border:1px solid var(--border); border-radius:6px; padding:8px; font-size:11px;
+  }
+  .action-btn.danger { background:rgba(255,23,68,.13); border-color:var(--red); color:var(--red); }
+
+  /* ── Add Block ── */
+  .add-btn {
+    width:100%; border:2px dashed var(--border); border-radius:10px; padding:14px;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    font-size:13px; opacity:.5; margin-top:4px; transition:opacity .15s;
+  }
+  .add-btn:active { opacity:.8; }
+  .add-panel {
+    background:var(--card); border-radius:10px; border:1px solid var(--border);
+    padding:14px; margin-top:4px; display:none;
+  }
+  .add-panel.open { display:block; }
+  .add-panel-title { font-size:11px; opacity:.45; letter-spacing:1px; text-align:center; margin-bottom:10px; }
+  .add-sizes { display:flex; gap:8px; }
+  .add-size-btn {
+    flex:1; background:var(--y); color:var(--bg); border-radius:8px;
+    padding:14px 0; font-size:18px; font-weight:700;
+  }
+  .add-cancel { width:100%; margin-top:8px; border:1px solid var(--border); border-radius:8px; padding:8px; font-size:11px; opacity:.4; }
+
+  /* ── Progress Bar ── */
+  .global-progress {
+    position:absolute; bottom:72px; left:0; right:0; height:3px;
+    background:var(--border); z-index:200; display:none;
+  }
+  .global-progress.show { display:block; }
+  .global-progress-fill { height:100%; background:var(--y); transition:width .1s linear; }
+
+  /* ── Reverb Glow ── */
+  .reverb-glow {
+    position:absolute; top:0; left:0; right:0; height:2px; z-index:300;
+    transition:background .2s; display:none;
+  }
+  .reverb-glow.show { display:block; }
+
+  /* ── Bottom Bar ── */
+  .bottom-bar {
+    position:absolute; bottom:0; left:0; right:0;
+    background:var(--bg); border-top:1px solid var(--border);
+    padding:10px 16px; padding-bottom:max(10px, env(safe-area-inset-bottom));
+    display:flex; gap:10px; align-items:center; z-index:200;
+  }
+  .play-btn {
+    width:52px; height:52px; border-radius:12px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    transition:background .15s;
+  }
+  .play-btn.go { background:var(--y); }
+  .play-btn.stop { background:var(--red); }
+  .play-btn.disabled { opacity:.25; pointer-events:none; }
+  .play-btn svg { width:24px; height:24px; }
+  .bottom-info { flex:1; }
+  .bottom-info-main { font-size:13px; font-weight:700; }
+  .bottom-info-sub { font-size:10px; opacity:.45; }
+  .export-btn {
+    height:52px; border-radius:12px; flex-shrink:0;
+    border:1px solid var(--y); display:flex; align-items:center;
+    justify-content:center; gap:6px; padding:0 14px; font-size:11px;
+    font-weight:700; letter-spacing:1px; position:relative; overflow:hidden;
+    transition:opacity .15s;
+  }
+  .export-btn.disabled { opacity:.25; pointer-events:none; }
+  .export-btn svg { width:16px; height:16px; }
+  .export-progress { position:absolute; left:0; bottom:0; height:3px; background:var(--y); transition:width .3s; }
+
+  /* ── Voice indicator ── */
+  .voice-indicator {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    font-size:14px; font-weight:700; color:var(--y); opacity:0;
+    pointer-events:none; z-index:500; text-align:center;
+    text-shadow:0 0 20px rgba(255,214,0,.5);
+    transition:opacity .1s;
+  }
+  .voice-indicator.show { opacity:1; }
+
+  /* Scrollbar */
+  .block-list::-webkit-scrollbar { width:3px; }
+  .block-list::-webkit-scrollbar-track { background:transparent; }
+  .block-list::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+
+  @media(hover:hover) {
+    .block-card:hover { border-color:#333; }
+    .add-btn:hover { opacity:.7; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="reverb-glow" id="reverbGlow"></div>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-top">
+      <div class="logo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2"><path d="M9,18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        BANDMAP
+      </div>
+      <button id="settingsBtn" style="border:1px solid var(--y);border-radius:6px;padding:6px 8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4,15a1.65,1.65 0 0,0,.33,1.82l.06.06a2,2 0 0,1-2.83,2.83l-.06-.06a1.65,1.65 0 0,0-1.82-.33 1.65,1.65 0 0,0-1,1.51V21a2,2 0 0,1-4,0v-.09A1.65,1.65 0 0,0,9,19.4a1.65,1.65 0 0,0-1.82.33l-.06.06a2,2 0 0,1-2.83-2.83l.06-.06A1.65,1.65 0 0,0,4.68,15a1.65,1.65 0 0,0-1.51-1H3a2,2 0 0,1,0-4h.09A1.65,1.65 0 0,0,4.6,9a1.65,1.65 0 0,0-.33-1.82l-.06-.06a2,2 0 0,1,2.83-2.83l.06.06A1.65,1.65 0 0,0,9,4.68a1.65,1.65 0 0,0,1-1.51V3a2,2 0 0,1,4,0v.09a1.65,1.65 0 0,0,1,1.51 1.65,1.65 0 0,0,1.82-.33l.06-.06a2,2 0 0,1,2.83,2.83l-.06.06A1.65,1.65 0 0,0,19.4,9a1.65,1.65 0 0,0,1.51,1H21a2,2 0 0,1,0,4h-.09a1.65,1.65 0 0,0-1.51,1Z"/></svg>
+      </button>
+    </div>
+    <div class="controls-row">
+      <div class="ctrl-box" style="flex:1">
+        <span class="ctrl-label">BPM</span>
+        <input type="number" id="bpmInput" class="bpm-input" value="120" min="30" max="300">
+        <div class="bpm-arrows">
+          <button id="bpmUp">▲</button>
+          <button id="bpmDown">▼</button>
+        </div>
+      </div>
+      <div class="ctrl-box" id="tsBox">
+        <span class="ctrl-label">COMP</span>
+      </div>
+    </div>
+    <div class="duration-bar">
+      <span id="totalBars">0 compases</span>
+      <span id="totalTime">0:00</span>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-row">
+      <div class="setting-header">
+        <span>REVERB BASE</span><span id="reverbBaseVal">15%</span>
+      </div>
+      <input type="range" id="reverbBaseSlider" min="0" max="80" value="15">
+    </div>
+    <div class="setting-row">
+      <div class="setting-header">
+        <span>INTENSIDAD TRANSICIÓN</span><span id="reverbIntVal">50%</span>
+      </div>
+      <input type="range" id="reverbIntSlider" min="0" max="100" value="50">
+      <div class="setting-labels"><span>SMOOTH</span><span>DRÁSTICO</span></div>
+    </div>
+    <div class="setting-row" style="margin-bottom:0">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2"><path d="M12,1a3,3 0 0,0-3,3v8a3,3 0 0,0,6,0V4A3,3 0 0,0,12,1Z"/><path d="M19,10v2a7,7 0 0,1-14,0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        <span style="font-size:10px;opacity:.45">Las voces usan Web Speech API en preview. En WAV se sustituyen por tonos.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Block List -->
+  <div class="block-list" id="blockList"></div>
+
+  <!-- Voice indicator overlay -->
+  <div class="voice-indicator" id="voiceIndicator"></div>
+
+  <!-- Global progress -->
+  <div class="global-progress" id="globalProgress">
+    <div class="global-progress-fill" id="globalProgressFill"></div>
+  </div>
+
+  <!-- Bottom Bar -->
+  <div class="bottom-bar">
+    <button class="play-btn go disabled" id="playBtn">
+      <svg viewBox="0 0 24 24" fill="#0A0A0A"><polygon points="5,3 19,12 5,21"/></svg>
+    </button>
+    <div class="bottom-info">
+      <div class="bottom-info-main" id="bottomMain">120 BPM · 4/4</div>
+      <div class="bottom-info-sub" id="bottomSub">0 bloques · 0:00</div>
+    </div>
+    <button class="export-btn disabled" id="exportBtn">
+      <div class="export-progress" id="exportProgress"></div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2" stroke-linecap="round"><path d="M21,15v4a2,2 0 0,1-2,2H5a2,2 0 0,1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span id="exportLabel">WAV</span>
+    </button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  BANDMAP — Song Structure & Click Track Builder
+// ═══════════════════════════════════════════════════
+
+const BLOCK_SIZES = [4, 8, 16, 32];
+const BLOCK_COLORS = [
+  "#FFD600","#FF6D00","#00E676","#00B0FF",
+  "#E040FB","#FF1744","#76FF03","#F50057",
+  "#18FFFF","#FFAB00","#7C4DFF","#64FFDA"
+];
+const PRESET_NAMES = [
+  "Intro","Verso","Pre-Estribillo","Estribillo",
+  "Puente","Solo","Breakdown","Outro",
+  "Build-Up","Drop","Interludio","Coda"
+];
+
+// ── State ──
+let state = {
+  bpm: 120,
+  ts: 4,
+  reverbBase: 0.15,
+  reverbIntensity: 0.5,
+  blocks: [
+    { id:1, name:"Intro", bars:8, color:"#00E676", claqueta:true, voice:true },
+    { id:2, name:"Verso 1", bars:16, color:"#FFD600", claqueta:true, voice:true },
+    { id:3, name:"Estribillo", bars:8, color:"#E040FB", claqueta:true, voice:true },
+  ],
+  nextId: 4,
+  playing: false,
+  editingId: null,
+  showSettings: false,
+  showAddPanel: false,
+};
+
+// ═══════════════════════════════════════════════════
+//  AUDIO ENGINE
+// ═══════════════════════════════════════════════════
+const audio = {
+  ctx: null,
+  masterGain: null,
+  reverbNode: null,
+  reverbGain: null,
+  dryGain: null,
+  isPlaying: false,
+  timer: null,
+  blockIdx: 0,
+
+  init() {
+    if (this.ctx) return;
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.masterGain = this.ctx.createGain();
+    this.masterGain.gain.value = 0.5;
+
+    // Reverb impulse response
+    const sr = this.ctx.sampleRate;
+    const len = sr * 2;
+    const imp = this.ctx.createBuffer(2, len, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = imp.getChannelData(ch);
+      for (let i = 0; i < len; i++) d[i] = (Math.random()*2-1) * Math.pow(1-i/len, 2.5);
+    }
+    this.reverbNode = this.ctx.createConvolver();
+    this.reverbNode.buffer = imp;
+    this.reverbGain = this.ctx.createGain();
+    this.reverbGain.gain.value = 0.15;
+    this.dryGain = this.ctx.createGain();
+    this.dryGain.gain.value = 0.85;
+
+    this.masterGain.connect(this.dryGain);
+    this.dryGain.connect(this.ctx.destination);
+    this.masterGain.connect(this.reverbNode);
+    this.reverbNode.connect(this.reverbGain);
+    this.reverbGain.connect(this.ctx.destination);
+  },
+
+  setReverb(wet) {
+    if (!this.reverbGain) return;
+    this.reverbGain.gain.value = Math.min(1, wet);
+    this.dryGain.gain.value = Math.max(0, 1 - wet);
+  },
+
+  click(freq, vol, dur = 0.04) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.frequency.value = freq;
+    o.type = "sine";
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(this.masterGain);
+    o.start(t); o.stop(t + dur);
+  },
+
+  // Count tone — triangle wave, ascending pitch, instant
+  countTone(idx) {
+    // idx: 0=uno, 1=dos, 2=tres, 3=cua(y)
+    const freqs = [1600, 1800, 2000, 2400];
+    const vols =  [0.3,  0.3,  0.35, 0.5];
+    const durs =  [0.06, 0.06, 0.06, 0.09];
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.frequency.value = freqs[idx] || 2400;
+    o.type = "triangle";
+    g.gain.setValueAtTime(vols[idx] || 0.4, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + (durs[idx] || 0.07));
+    o.connect(g); g.connect(this.masterGain);
+    o.start(t); o.stop(t + (durs[idx] || 0.07));
+  },
+
+  speak(text, rate = 1.2) {
+    if (!('speechSynthesis' in window)) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'es-ES'; u.rate = rate; u.pitch = 0.9; u.volume = 1;
+    speechSynthesis.speak(u);
+  },
+
+  // ── MAIN PLAYBACK ──
+  start(blocks, bpm, ts, reverbBase, reverbInt, onTick, onFinish) {
+    this.init();
+    this.isPlaying = true;
+    this.blockIdx = 0;
+
+    const interval = 60000 / bpm;
+    let globalBeat = 0;
+    let beatInBlock = 0;
+    const totalBeats = blocks.reduce((s, b) => s + b.bars * ts, 0);
+
+    const tick = () => {
+      if (!this.isPlaying || this.blockIdx >= blocks.length) {
+        this.isPlaying = false;
+        onFinish();
+        return;
+      }
+
+      const block = blocks[this.blockIdx];
+      const totalBlockBeats = block.bars * ts;
+      const beatInBar = beatInBlock % ts;
+      const barInBlock = Math.floor(beatInBlock / ts);
+
+      // ── Reverb ramp ──
+      const progress = beatInBlock / totalBlockBeats;
+      let revAmt = reverbBase;
+      if (progress > 0.7) {
+        const rp = (progress - 0.7) / 0.3;
+        revAmt = reverbBase + (0.9 - reverbBase) * Math.pow(rp, 2 - reverbInt * 1.5);
+      }
+      this.setReverb(revAmt);
+
+      // ── Position context ──
+      const isDownbeat = beatInBar === 0;
+      const isLastBar = barInBlock === block.bars - 1;
+      const hasNext = this.blockIdx < blocks.length - 1;
+      const isClaqueta = block.claqueta && isLastBar && hasNext;
+      const isBlockEntrance = beatInBlock === 0;
+
+      // ── METRONOME ──
+      if (isBlockEntrance) {
+        // STRONG "1" — the band enters here, after the "y" count
+        this.click(1400, 0.85, 0.08);
+        this.click(700, 0.35, 0.06);
+      } else if (isClaqueta) {
+        this.click(isDownbeat ? 1400 : 1000, isDownbeat ? 0.7 : 0.5, isDownbeat ? 0.06 : 0.04);
+        this.click(2200, 0.25, 0.015);
+      } else if (isDownbeat) {
+        this.click(1200, 0.5, 0.05);
+      } else {
+        this.click(800, 0.25, 0.03);
+      }
+
+      // ── VOICE + COUNT on last bar ──
+      // Musical phrasing: "Y [nombre] en dos tres y"
+      // Mapped to last bar beats (4/4):
+      //   beat 0: speak "Y [nombre]" + count tone
+      //   beat 1: speak "en" + count tone
+      //   beat 2: speak "dos" + count tone
+      //   beat 3: speak "tres y" + count tone (highest, "cua")
+      // Then NEXT beat = strong "1" of new block
+      if (hasNext && block.voice && isLastBar) {
+        const nextName = blocks[this.blockIdx + 1].name;
+        if (ts >= 4) {
+          const countStart = ts - 4;
+          const countBeat = beatInBar - countStart;
+          if (countBeat === 0) {
+            this.countTone(0);
+            speechSynthesis.cancel();
+            this.speak("Y " + nextName, 1.8);
+            showVoiceIndicator("Y " + nextName);
+          } else if (countBeat === 1) {
+            this.countTone(1);
+            showVoiceIndicator("en");
+          } else if (countBeat === 2) {
+            this.countTone(2);
+            showVoiceIndicator("dos");
+          } else if (countBeat === 3) {
+            this.countTone(3);
+            showVoiceIndicator("tres y");
+          }
+        } else if (ts === 3) {
+          // 3/4: "Y [nombre] · dos · tres y"
+          if (beatInBar === 0) {
+            this.countTone(0);
+            speechSynthesis.cancel();
+            this.speak("Y " + nextName, 1.8);
+            showVoiceIndicator("Y " + nextName);
+          } else if (beatInBar === 1) {
+            this.countTone(2);
+            showVoiceIndicator("dos");
+          } else if (beatInBar === 2) {
+            this.countTone(3);
+            showVoiceIndicator("tres y");
+          }
+        }
+      }
+
+      onTick({
+        globalBeat, beatInBlock, beatInBar, barInBlock,
+        blockIndex: this.blockIdx, totalBeats, revAmt, totalBlockBeats,
+      });
+
+      beatInBlock++;
+      globalBeat++;
+
+      if (beatInBlock >= totalBlockBeats) {
+        beatInBlock = 0;
+        this.blockIdx++;
+        this.setReverb(reverbBase);
+      }
+
+      if (this.isPlaying) {
+        this.timer = setTimeout(tick, interval);
+      }
+    };
+
+    tick();
+  },
+
+  stop() {
+    this.isPlaying = false;
+    if (this.timer) clearTimeout(this.timer);
+    speechSynthesis.cancel();
+  }
+};
+
+// ── Voice indicator ──
+let voiceTimeout;
+function showVoiceIndicator(text) {
+  const el = document.getElementById('voiceIndicator');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(voiceTimeout);
+  voiceTimeout = setTimeout(() => el.classList.remove('show'), 400);
+}
+
+// ═══════════════════════════════════════════════════
+//  OFFLINE RENDERER (WAV export)
+// ═══════════════════════════════════════════════════
+async function renderToWav(blocks, bpm, ts, reverbBase, reverbInt) {
+  const sr = 44100;
+  const interval = 60 / bpm;
+  const totalBeats = blocks.reduce((s, b) => s + b.bars * ts, 0);
+  const duration = totalBeats * interval + 3;
+  const offCtx = new OfflineAudioContext(2, Math.ceil(duration * sr), sr);
+
+  // Reverb
+  const impLen = sr * 2;
+  const imp = offCtx.createBuffer(2, impLen, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = imp.getChannelData(ch);
+    for (let i = 0; i < impLen; i++) d[i] = (Math.random()*2-1) * Math.pow(1-i/impLen, 2.5);
+  }
+  const conv = offCtx.createConvolver(); conv.buffer = imp;
+  const wet = offCtx.createGain(); const dry = offCtx.createGain();
+  const master = offCtx.createGain(); master.gain.value = 0.5;
+  master.connect(dry); dry.connect(offCtx.destination);
+  master.connect(conv); conv.connect(wet); wet.connect(offCtx.destination);
+
+  function schedOsc(time, freq, vol, dur, type = "sine") {
+    const o = offCtx.createOscillator();
+    const g = offCtx.createGain();
+    o.frequency.value = freq; o.type = type;
+    g.gain.setValueAtTime(vol, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    o.connect(g); g.connect(master);
+    o.start(time); o.stop(time + dur);
+  }
+
+  let globalBeat = 0;
+  for (let bi = 0; bi < blocks.length; bi++) {
+    const block = blocks[bi];
+    const totalBlockBeats = block.bars * ts;
+
+    for (let bib = 0; bib < totalBlockBeats; bib++) {
+      const time = globalBeat * interval;
+      const beatInBar = bib % ts;
+      const barInBlock = Math.floor(bib / ts);
+      const isDownbeat = beatInBar === 0;
+      const isLastBar = barInBlock === block.bars - 1;
+      const hasNext = bi < blocks.length - 1;
+      const isClaqueta = block.claqueta && isLastBar && hasNext;
+      const isBlockEntrance = bib === 0;
+
+      // Reverb
+      const prog = bib / totalBlockBeats;
+      let rev = reverbBase;
+      if (prog > 0.7) {
+        const rp = (prog - 0.7) / 0.3;
+        rev = reverbBase + (0.9 - reverbBase) * Math.pow(rp, 2 - reverbInt * 1.5);
+      }
+      wet.gain.setValueAtTime(rev, time);
+      dry.gain.setValueAtTime(1 - rev, time);
+
+      // CLICK
+      if (isBlockEntrance) {
+        schedOsc(time, 1400, 0.85, 0.08);
+        schedOsc(time, 700, 0.35, 0.06);
+      } else if (isClaqueta) {
+        schedOsc(time, isDownbeat ? 1400 : 1000, isDownbeat ? 0.7 : 0.5, isDownbeat ? 0.06 : 0.04);
+        schedOsc(time, 2200, 0.25, 0.015);
+      } else if (isDownbeat) {
+        schedOsc(time, 1200, 0.5, 0.05);
+      } else {
+        schedOsc(time, 800, 0.25, 0.03);
+      }
+
+      // COUNT tones on last bar
+      if (hasNext && block.voice && isLastBar) {
+        const countFreqs = [1600, 1800, 2000, 2400];
+        const countVols = [0.3, 0.3, 0.35, 0.5];
+        const countDurs = [0.06, 0.06, 0.06, 0.09];
+        if (ts >= 4) {
+          const cs = ts - 4;
+          const ci = beatInBar - cs;
+          if (ci >= 0 && ci < 4) {
+            schedOsc(time, countFreqs[ci], countVols[ci], countDurs[ci], "triangle");
+          }
+        } else if (ts === 3 && beatInBar < 3) {
+          schedOsc(time, countFreqs[beatInBar], countVols[beatInBar], countDurs[beatInBar], "triangle");
+        }
+
+        // Announce tone burst on first beat of last bar
+        if (beatInBar === 0) {
+          for (let n = 0; n < 3; n++) {
+            schedOsc(time + n * 0.06, 2000 + n * 200, 0.12, 0.05);
+          }
+        }
+      }
+
+      globalBeat++;
+    }
+  }
+
+  const rendered = await offCtx.startRendering();
+  return bufferToWav(rendered);
+}
+
+function bufferToWav(buf) {
+  const nc = buf.numberOfChannels, sr = buf.sampleRate;
+  const len = buf.length * nc * 2 + 44;
+  const ab = new ArrayBuffer(len);
+  const v = new DataView(ab);
+  const ws = (o, s) => { for (let i=0;i<s.length;i++) v.setUint8(o+i, s.charCodeAt(i)); };
+  ws(0,'RIFF'); v.setUint32(4,len-8,true); ws(8,'WAVE');
+  ws(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true);
+  v.setUint16(22,nc,true); v.setUint32(24,sr,true);
+  v.setUint32(28,sr*nc*2,true); v.setUint16(32,nc*2,true); v.setUint16(34,16,true);
+  ws(36,'data'); v.setUint32(40,buf.length*nc*2,true);
+  let off = 44;
+  const chs = []; for (let c=0;c<nc;c++) chs.push(buf.getChannelData(c));
+  for (let i=0;i<buf.length;i++) {
+    for (let c=0;c<nc;c++) {
+      const s = Math.max(-1, Math.min(1, chs[c][i]));
+      v.setInt16(off, s<0 ? s*0x8000 : s*0x7FFF, true);
+      off += 2;
+    }
+  }
+  return new Blob([ab], { type:'audio/wav' });
+}
+
+// ═══════════════════════════════════════════════════
+//  UI RENDERING
+// ═══════════════════════════════════════════════════
+function render() {
+  renderBlocks();
+  updateDuration();
+  updateBottomBar();
+  updatePlayBtn();
+}
+
+function updateDuration() {
+  const tb = state.blocks.reduce((s,b) => s+b.bars, 0);
+  const beats = tb * state.ts;
+  const secs = beats * (60 / state.bpm);
+  const m = Math.floor(secs/60), s = Math.floor(secs%60);
+  document.getElementById('totalBars').textContent = tb + ' compases';
+  document.getElementById('totalTime').textContent = m + ':' + String(s).padStart(2,'0');
+}
+
+function updateBottomBar(ps) {
+  const main = document.getElementById('bottomMain');
+  const sub = document.getElementById('bottomSub');
+  if (state.playing && ps) {
+    const b = state.blocks[ps.blockIndex];
+    if (b) {
+      main.textContent = b.name;
+      main.style.color = b.color;
+      sub.textContent = `Compás ${ps.barInBlock+1}/${b.bars} · Bloque ${ps.blockIndex+1}/${state.blocks.length}`;
+    }
+  } else {
+    main.style.color = '#FFD600';
+    main.textContent = state.bpm + ' BPM · ' + state.ts + '/4';
+    const tb = state.blocks.reduce((s,b) => s+b.bars, 0);
+    const beats = tb * state.ts;
+    const secs = beats * (60 / state.bpm);
+    const m = Math.floor(secs/60), s = Math.floor(secs%60);
+    sub.textContent = state.blocks.length + ' bloques · ' + m + ':' + String(s).padStart(2,'0');
+  }
+}
+
+function updatePlayBtn() {
+  const btn = document.getElementById('playBtn');
+  const exp = document.getElementById('exportBtn');
+  const empty = state.blocks.length === 0;
+
+  if (state.playing) {
+    btn.className = 'play-btn stop';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="#0A0A0A"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>';
+    exp.classList.add('disabled');
+  } else {
+    btn.className = 'play-btn go' + (empty ? ' disabled' : '');
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="#0A0A0A"><polygon points="5,3 19,12 5,21"/></svg>';
+    exp.classList.toggle('disabled', empty);
+  }
+}
+
+function renderBlocks() {
+  const list = document.getElementById('blockList');
+  list.innerHTML = '';
+
+  if (state.blocks.length === 0) {
+    list.innerHTML = '<div class="empty-msg">Añade bloques para construir la estructura</div>';
+  }
+
+  state.blocks.forEach((block, idx) => {
+    const card = document.createElement('div');
+    card.className = 'block-card';
+    card.dataset.blockIdx = idx;
+    card.draggable = !state.playing;
+    card.id = 'block-' + block.id;
+
+    // Progress bg
+    const progBg = document.createElement('div');
+    progBg.className = 'block-progress-bg';
+    progBg.style.background = block.color + '15';
+    progBg.style.width = '0%';
+    progBg.id = 'blockProg-' + block.id;
+    card.appendChild(progBg);
+
+    // Main row
+    const main = document.createElement('div');
+    main.className = 'block-main';
+
+    main.innerHTML = `
+      <div class="block-color-bar" style="background:${block.color}"></div>
+      ${!state.playing ? '<div class="block-grip"><svg width="16" height="16" viewBox="0 0 24 24" fill="#FFD600"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></div>' : ''}
+      <div class="block-info">
+        <div class="block-name" style="color:${block.color}">${block.name}</div>
+        <div class="block-meta">
+          <span>${block.bars} comp.</span>
+          ${block.claqueta ? '<span>🔔 claq</span>' : ''}
+          ${block.voice ? '<span>🎙 voz</span>' : ''}
+        </div>
+      </div>
+      <div class="block-beat-display" id="beatDisp-${block.id}" style="display:none">
+        <div class="block-beat-num" style="color:${block.color}">-</div>
+        <div class="block-beat-bar">-</div>
+      </div>
+      ${!state.playing ? '<div class="block-chevron"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,9 12,15 18,9"/></svg></div>' : ''}
+    `;
+
+    if (!state.playing) {
+      main.addEventListener('click', () => {
+        state.editingId = state.editingId === block.id ? null : block.id;
+        render();
+      });
+    }
+
+    card.appendChild(main);
+
+    // Edit panel
+    if (!state.playing) {
+      const edit = document.createElement('div');
+      edit.className = 'block-edit' + (state.editingId === block.id ? ' open' : '');
+      edit.innerHTML = buildEditHTML(block);
+      card.appendChild(edit);
+    }
+
+    // Drag events
+    if (!state.playing) {
+      card.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', idx);
+        card.classList.add('dragging');
+      });
+      card.addEventListener('dragend', () => card.classList.remove('dragging'));
+      card.addEventListener('dragover', (e) => { e.preventDefault(); card.classList.add('drag-over'); });
+      card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+      card.addEventListener('drop', (e) => {
+        e.preventDefault();
+        card.classList.remove('drag-over');
+        const fromIdx = parseInt(e.dataTransfer.getData('text/plain'));
+        const toIdx = idx;
+        if (fromIdx !== toIdx) {
+          const [moved] = state.blocks.splice(fromIdx, 1);
+          state.blocks.splice(toIdx, 0, moved);
+          render();
+        }
+      });
+    }
+
+    list.appendChild(card);
+  });
+
+  // Add button
+  if (!state.playing) {
+    const addArea = document.createElement('div');
+    if (!state.showAddPanel) {
+      addArea.innerHTML = `<button class="add-btn" id="addBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Añadir bloque
+      </button>`;
+      addArea.querySelector('#addBtn').addEventListener('click', () => {
+        state.showAddPanel = true; render();
+      });
+    } else {
+      addArea.innerHTML = `
+        <div class="add-panel open">
+          <div class="add-panel-title">COMPASES DEL BLOQUE</div>
+          <div class="add-sizes">
+            ${BLOCK_SIZES.map(s => `<button class="add-size-btn" data-size="${s}">${s}</button>`).join('')}
+          </div>
+          <button class="add-cancel" id="addCancel">Cancelar</button>
+        </div>`;
+      addArea.querySelectorAll('.add-size-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          addBlock(parseInt(btn.dataset.size));
+        });
+      });
+      addArea.querySelector('#addCancel').addEventListener('click', () => {
+        state.showAddPanel = false; render();
+      });
+    }
+    list.appendChild(addArea);
+  }
+}
+
+function buildEditHTML(block) {
+  const presetBtns = PRESET_NAMES.map(n =>
+    `<button class="preset-tag ${block.name===n?'active':''}" data-preset="${n}">${n}</button>`
+  ).join('');
+  const barsBtns = BLOCK_SIZES.map(s =>
+    `<button class="bars-btn ${block.bars===s?'active':''}" data-bars="${s}">${s}</button>`
+  ).join('');
+  const colorSwatches = BLOCK_COLORS.map(c =>
+    `<button class="color-swatch ${block.color===c?'active':''}" data-color="${c}" style="background:${c}"></button>`
+  ).join('');
+
+  return `
+    <div>
+      <span class="edit-label">NOMBRE</span>
+      <input class="edit-input" value="${block.name}" data-field="name" data-id="${block.id}">
+      <div class="preset-tags">${presetBtns}</div>
+    </div>
+    <div>
+      <span class="edit-label">COMPASES</span>
+      <div class="bars-row">${barsBtns}</div>
+    </div>
+    <div>
+      <span class="edit-label">COLOR</span>
+      <div class="colors-row">${colorSwatches}</div>
+    </div>
+    <div class="toggle-row">
+      <button class="toggle-btn ${block.claqueta?'on':''}" data-toggle="claqueta" data-id="${block.id}">🔔 Claqueta</button>
+      <button class="toggle-btn ${block.voice?'on':''}" data-toggle="voice" data-id="${block.id}">🎙 Voz</button>
+    </div>
+    <div class="action-row">
+      <button class="action-btn" data-action="duplicate" data-id="${block.id}">📋 Duplicar</button>
+      <button class="action-btn danger" data-action="delete" data-id="${block.id}">🗑 Eliminar</button>
+    </div>
+  `;
+}
+
+// ── Event Delegation ──
+document.getElementById('blockList').addEventListener('click', (e) => {
+  const target = e.target.closest('[data-preset]');
+  if (target) {
+    const block = state.blocks.find(b => b.id === state.editingId);
+    if (block) { block.name = target.dataset.preset; render(); }
+    return;
+  }
+  const barsTarget = e.target.closest('[data-bars]');
+  if (barsTarget) {
+    const block = state.blocks.find(b => b.id === state.editingId);
+    if (block) { block.bars = parseInt(barsTarget.dataset.bars); render(); }
+    return;
+  }
+  const colorTarget = e.target.closest('[data-color]');
+  if (colorTarget) {
+    const block = state.blocks.find(b => b.id === state.editingId);
+    if (block) { block.color = colorTarget.dataset.color; render(); }
+    return;
+  }
+  const toggleTarget = e.target.closest('[data-toggle]');
+  if (toggleTarget) {
+    const id = parseInt(toggleTarget.dataset.id);
+    const block = state.blocks.find(b => b.id === id);
+    if (block) {
+      const field = toggleTarget.dataset.toggle;
+      block[field] = !block[field];
+      render();
+    }
+    return;
+  }
+  const actionTarget = e.target.closest('[data-action]');
+  if (actionTarget) {
+    const id = parseInt(actionTarget.dataset.id);
+    const action = actionTarget.dataset.action;
+    if (action === 'delete') {
+      state.blocks = state.blocks.filter(b => b.id !== id);
+      if (state.editingId === id) state.editingId = null;
+      render();
+    } else if (action === 'duplicate') {
+      const idx = state.blocks.findIndex(b => b.id === id);
+      if (idx > -1) {
+        const clone = { ...state.blocks[idx], id: state.nextId++, name: state.blocks[idx].name + ' (copia)' };
+        state.blocks.splice(idx + 1, 0, clone);
+        render();
+      }
+    }
+  }
+});
+
+document.getElementById('blockList').addEventListener('input', (e) => {
+  if (e.target.dataset.field === 'name') {
+    const id = parseInt(e.target.dataset.id);
+    const block = state.blocks.find(b => b.id === id);
+    if (block) block.name = e.target.value;
+    updateDuration();
+  }
+});
+
+// ── Header controls ──
+document.getElementById('bpmInput').addEventListener('change', (e) => {
+  state.bpm = Math.max(30, Math.min(300, parseInt(e.target.value) || 120));
+  e.target.value = state.bpm;
+  updateDuration(); updateBottomBar();
+});
+document.getElementById('bpmUp').addEventListener('click', () => {
+  state.bpm = Math.min(300, state.bpm + 1);
+  document.getElementById('bpmInput').value = state.bpm;
+  updateDuration(); updateBottomBar();
+});
+document.getElementById('bpmDown').addEventListener('click', () => {
+  state.bpm = Math.max(30, state.bpm - 1);
+  document.getElementById('bpmInput').value = state.bpm;
+  updateDuration(); updateBottomBar();
+});
+
+// Time signature buttons
+const tsBox = document.getElementById('tsBox');
+[3,4,6].forEach(t => {
+  const btn = document.createElement('button');
+  btn.className = 'ts-btn' + (state.ts === t ? ' active' : '');
+  btn.textContent = t + '/4';
+  btn.addEventListener('click', () => {
+    state.ts = t;
+    tsBox.querySelectorAll('.ts-btn').forEach(b => b.classList.toggle('active', parseInt(b.textContent) === t));
+    updateDuration(); updateBottomBar();
+  });
+  tsBox.appendChild(btn);
+});
+
+// Settings
+document.getElementById('settingsBtn').addEventListener('click', () => {
+  state.showSettings = !state.showSettings;
+  document.getElementById('settingsPanel').classList.toggle('open', state.showSettings);
+  const btn = document.getElementById('settingsBtn');
+  btn.style.background = state.showSettings ? '#FFD600' : 'transparent';
+  btn.querySelector('svg').setAttribute('stroke', state.showSettings ? '#0A0A0A' : '#FFD600');
+});
+document.getElementById('reverbBaseSlider').addEventListener('input', (e) => {
+  state.reverbBase = +e.target.value / 100;
+  document.getElementById('reverbBaseVal').textContent = e.target.value + '%';
+});
+document.getElementById('reverbIntSlider').addEventListener('input', (e) => {
+  state.reverbIntensity = +e.target.value / 100;
+  document.getElementById('reverbIntVal').textContent = e.target.value + '%';
+});
+
+// ── PLAY ──
+document.getElementById('playBtn').addEventListener('click', () => {
+  if (state.playing) {
+    audio.stop();
+    state.playing = false;
+    document.getElementById('globalProgress').classList.remove('show');
+    document.getElementById('reverbGlow').classList.remove('show');
+    document.getElementById('voiceIndicator').classList.remove('show');
+    render();
+    return;
+  }
+  if (state.blocks.length === 0) return;
+
+  state.playing = true;
+  state.editingId = null;
+  render();
+  document.getElementById('globalProgress').classList.add('show');
+  document.getElementById('reverbGlow').classList.add('show');
+
+  audio.start(
+    state.blocks, state.bpm, state.ts, state.reverbBase, state.reverbIntensity,
+    (ps) => {
+      // Update UI on each tick
+      const pct = (ps.globalBeat / ps.totalBeats) * 100;
+      document.getElementById('globalProgressFill').style.width = pct + '%';
+
+      // Reverb glow
+      const block = state.blocks[ps.blockIndex];
+      if (block) {
+        const glow = document.getElementById('reverbGlow');
+        const hex = Math.round(ps.revAmt * 255).toString(16).padStart(2, '0');
+        glow.style.background = `linear-gradient(90deg, ${block.color}00, ${block.color}${hex}, ${block.color}00)`;
+      }
+
+      // Update block cards
+      state.blocks.forEach((b, i) => {
+        const card = document.getElementById('block-' + b.id);
+        const disp = document.getElementById('beatDisp-' + b.id);
+        const prog = document.getElementById('blockProg-' + b.id);
+        if (!card) return;
+
+        if (i === ps.blockIndex) {
+          card.style.borderColor = b.color;
+          card.style.borderWidth = '2px';
+          card.style.boxShadow = `0 0 20px ${b.color}33`;
+          if (disp) {
+            disp.style.display = 'block';
+            disp.querySelector('.block-beat-num').textContent = ps.beatInBar + 1;
+            disp.querySelector('.block-beat-bar').textContent = `c.${ps.barInBlock+1}/${b.bars}`;
+          }
+          if (prog) prog.style.width = (ps.beatInBlock / ps.totalBlockBeats * 100) + '%';
+          card.scrollIntoView({ behavior:'smooth', block:'center' });
+        } else {
+          card.style.borderColor = '#222';
+          card.style.borderWidth = '1px';
+          card.style.boxShadow = 'none';
+          if (disp) disp.style.display = 'none';
+          if (prog) prog.style.width = i < ps.blockIndex ? '100%' : '0%';
+        }
+      });
+
+      updateBottomBar(ps);
+    },
+    () => {
+      state.playing = false;
+      document.getElementById('globalProgress').classList.remove('show');
+      document.getElementById('reverbGlow').classList.remove('show');
+      document.getElementById('voiceIndicator').classList.remove('show');
+      render();
+    }
+  );
+});
+
+// ── EXPORT ──
+document.getElementById('exportBtn').addEventListener('click', async () => {
+  if (state.blocks.length === 0 || state.playing) return;
+  const btn = document.getElementById('exportBtn');
+  const bar = document.getElementById('exportProgress');
+  const label = document.getElementById('exportLabel');
+  btn.classList.add('disabled');
+  label.textContent = '...';
+
+  let pct = 0;
+  const prog = setInterval(() => { pct = Math.min(pct+5, 90); bar.style.width = pct+'%'; }, 200);
+
+  try {
+    const wav = await renderToWav(state.blocks, state.bpm, state.ts, state.reverbBase, state.reverbIntensity);
+    clearInterval(prog);
+    bar.style.width = '100%';
+
+    const url = URL.createObjectURL(wav);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bandmap_${state.bpm}bpm.wav`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    setTimeout(() => {
+      bar.style.width = '0%';
+      label.textContent = 'WAV';
+      btn.classList.remove('disabled');
+    }, 800);
+  } catch(e) {
+    console.error(e);
+    clearInterval(prog);
+    bar.style.width = '0%';
+    label.textContent = 'WAV';
+    btn.classList.remove('disabled');
+  }
+});
+
+function addBlock(bars) {
+  const ci = state.blocks.length % BLOCK_COLORS.length;
+  const ni = state.blocks.length % PRESET_NAMES.length;
+  state.blocks.push({
+    id: state.nextId++,
+    name: PRESET_NAMES[ni],
+    bars,
+    color: BLOCK_COLORS[ci],
+    claqueta: true,
+    voice: true,
+  });
+  state.showAddPanel = false;
+  render();
+}
+
+// ── Initial render ──
+render();
+</script>
+</body>
+</html>
