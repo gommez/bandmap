@@ -317,12 +317,15 @@ const audio={
   click(f,v,d=.04){if(!this.ctx)return;const t=this.ctx.currentTime;const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.frequency.value=f;o.type="sine";g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g);g.connect(this.clickGain);o.start(t);o.stop(t+d)},
   countTone(i){const F=[1600,1800,2000,2400],V=[.3,.3,.35,.5],D=[.06,.06,.06,.09];if(!this.ctx)return;const t=this.ctx.currentTime;const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.frequency.value=F[i]||2400;o.type="triangle";g.gain.setValueAtTime(V[i]||.4,t);g.gain.exponentialRampToValueAtTime(.001,t+(D[i]||.07));o.connect(g);g.connect(this.clickGain);o.start(t);o.stop(t+(D[i]||.07))},
   async playRecordedCue(dataUrl){if(!this.ctx||!dataUrl)return;try{let buf=this.clipCache.get(dataUrl);if(!buf){const arr=await fetch(dataUrl).then(r=>r.arrayBuffer());buf=await this.ctx.decodeAudioData(arr.slice(0));this.clipCache.set(dataUrl,buf)}const s=this.ctx.createBufferSource(),g=this.ctx.createGain();g.gain.value=1;s.buffer=buf;s.connect(g);g.connect(this.voiceGain);s.start()}catch(e){console.error('playRecordedCue',e)}},
-  start(blocks,bpm,ts,reverbBase,reverbInt,onTick,onFinish){
+  start(blocks,bpm,ts,onTick,onFinish){
     this.init();this.isPlaying=true;this.blockIdx=0;
     const interval=60000/bpm;let globalBeat=0,beatInBlock=0;
     const totalBeats=blocks.reduce((s,b)=>s+b.bars*ts,0);
     const tick=()=>{
       if(!this.isPlaying||this.blockIdx>=blocks.length){this.isPlaying=false;onFinish();return}
+      // Read live from state on every tick
+      const reverbBase=state.reverbBase,reverbInt=state.reverbIntensity;
+      this.updateVolumes();this.updateDelay();
       const block=blocks[this.blockIdx],totalBlockBeats=block.bars*ts,beatInBar=beatInBlock%ts,barInBlock=Math.floor(beatInBlock/ts);
       const progress=beatInBlock/totalBlockBeats;let revAmt=reverbBase;
       if(progress>.7){const rp=(progress-.7)/.3;revAmt=reverbBase+(.9-reverbBase)*Math.pow(rp,2-reverbInt*1.5)}
@@ -728,7 +731,7 @@ document.getElementById('playBtn').addEventListener('click',async()=>{
   if(state.playing){audio.stop();state.playing=false;document.getElementById('globalProgress').classList.remove('show');document.getElementById('reverbGlow').classList.remove('show');document.getElementById('voiceIndicator').classList.remove('show');document.getElementById('fullscreenPulse').classList.remove('show');render();return}
   if(!state.blocks.length)return;await ensureAudioUnlocked();
   state.playing=true;state.editingId=null;render();document.getElementById('globalProgress').classList.add('show');document.getElementById('reverbGlow').classList.add('show');
-  audio.start(state.blocks,state.bpm,state.ts,state.reverbBase,state.reverbIntensity,ps=>{
+  audio.start(state.blocks,state.bpm,state.ts,ps=>{
     document.getElementById('globalProgressFill').style.width=(ps.globalBeat/ps.totalBeats*100)+'%';
     const block=state.blocks[ps.blockIndex];if(block){const hex=Math.round(ps.revAmt*255).toString(16).padStart(2,'0');document.getElementById('reverbGlow').style.background=`linear-gradient(90deg,${block.color}00,${block.color}${hex},${block.color}00)`}
     state.blocks.forEach((b,i)=>{const card=document.getElementById('block-'+b.id),disp=document.getElementById('beatDisp-'+b.id),prog=document.getElementById('blockProg-'+b.id);if(!card)return;
