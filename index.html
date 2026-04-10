@@ -291,11 +291,11 @@ const audio={
       this.setReverb(revAmt);
       const isDownbeat=beatInBar===0,isLastBar=barInBlock===block.bars-1,hasNext=this.blockIdx<blocks.length-1,isClaqueta=block.claqueta&&isLastBar&&hasNext,isBlockEntrance=beatInBlock===0;
       if(isBlockEntrance){this.click(1400,.85,.08);this.click(700,.35,.06);
-        // Play this block's voice clip from the start of the block
         if(block.voice&&block.voiceClip){this.playRecordedCue(block.voiceClip);showVI("🎙 "+block.name)}}
       else if(isClaqueta){this.click(isDownbeat?1400:1000,isDownbeat?.7:.5,isDownbeat?.06:.04);this.click(2200,.25,.015)}
       else if(isDownbeat){this.click(1200,.5,.05)}else{this.click(800,.25,.03)}
-      if(hasNext&&isLastBar){const nc=blocks[this.blockIdx+1].color||'#FFD600';
+      // Count tones + pulse ONLY if claqueta is enabled
+      if(hasNext&&isLastBar&&block.claqueta){const nc=blocks[this.blockIdx+1].color||'#FFD600';
         if(ts>=4){const cs=ts-4,cb=beatInBar-cs;if(cb>=0&&cb<=3){this.countTone(cb);triggerPulse(nc,[.28,.42,.62,.82][cb]);
           if(cb===1)showVI("2");else if(cb===2)showVI("3");else if(cb===3)showVI("4")}}
         else if(ts===3&&beatInBar<=2){const m=[0,2,3][beatInBar];this.countTone(m);triggerPulse(nc,[.34,.58,.82][beatInBar])}}
@@ -312,7 +312,7 @@ let viT;function showVI(t){const e=document.getElementById('voiceIndicator');e.t
 let pT;function triggerPulse(c,s){const e=document.getElementById('fullscreenPulse');if(!e)return;const h=c.replace('#',''),r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);e.style.background=`rgba(${r},${g},${b},${Math.max(.12,Math.min(.85,s))})`;e.classList.remove('show');void e.offsetWidth;e.classList.add('show');clearTimeout(pT);pT=setTimeout(()=>e.classList.remove('show'),135)}
 async function ensureAudioUnlocked(){audio.init();if(audio.ctx&&audio.ctx.state==='suspended')await audio.ctx.resume();if(audio.ctx){const b=audio.ctx.createBuffer(1,1,audio.ctx.sampleRate),s=audio.ctx.createBufferSource();s.buffer=b;s.connect(audio.ctx.destination);s.start(0)}}
 
-// ═══════ RECORDING (with metronome + progress) ═══════
+// ═══════ RECORDING (with metronome + progress, sync-fixed) ═══════
 let activeRecorder=null,activeStream=null,activeChunks=[],recTimer=null;
 
 async function startBlockVoiceRecording(blockId){
@@ -325,77 +325,130 @@ async function startBlockVoiceRecording(blockId){
 
   const beatMs=60000/state.bpm;
   const totalBeats=block.bars*state.ts;
-  const totalMs=totalBeats*beatMs;
+  const countInBeats=state.ts; // one full bar count-in
 
   // Show overlay
   const overlay=document.getElementById('recOverlay');
+  const markerCount=Math.min(block.bars,20);
   overlay.innerHTML=`<div class="rec-overlay">
     <div class="rec-title" style="color:${block.color}">🎙 ${block.name}</div>
     <div class="rec-beat" id="recBeat" style="color:${block.color}">-</div>
     <div class="rec-bar-info" id="recBarInfo">Preparando...</div>
     <div class="rec-progress-track"><div class="rec-progress-fill" id="recProgress" style="background:${block.color};width:0"></div></div>
-    <div class="rec-progress-markers"><span>0</span>${Array.from({length:block.bars-1},(_,i)=>`<span>${i+1}</span>`).join('')}<span>${block.bars}</span></div>
     <div class="rec-status" id="recStatus"><span>Cuenta atrás...</span></div>
     <button class="rec-stop-btn" id="recStopBtn">⏹ PARAR</button>
   </div>`;
   document.getElementById('recStopBtn').addEventListener('click',()=>stopBlockVoiceRecording());
 
-  // Count-in: 4 beats
-  for(let i=0;i<4;i++){
+  // Start recorder IMMEDIATELY to warm it up — we trim the count-in later
+  const mt=['audio/webm;codecs=opus','audio/mp4','audio/webm'].find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t));
+  activeChunks=[];
+  activeRecorder=mt?new MediaRecorder(activeStream,{mimeType:mt}):new MediaRecorder(activeStream);
+  state.recordingId=blockId;
+
+  activeRecorder.ondataavailable=e=>{if(e.data&&e.data.size)activeChunks.push(e.data)};
+  activeRecorder.onstop=()=>{
+    const blob=new Blob(activeChunks,{type:activeRecorder.mimeType||'audio/webm'});
+    // Trim count-in: decode, remove first countInBeats*beatMs, re-encode
+    trimAndSaveClip(blob, countInBeats*beatMs/1000, block, overlay);
+  };
+  activeRecorder.start();
+
+  // Count-in with clicks (recorder is already running, this audio won't be in final clip)
+  for(let i=0;i<countInBeats;i++){
     audio.click(i===0?1400:900,i===0?.8:.45,.05);
-    document.getElementById('recBeat').textContent=4-i;
-    document.getElementById('recBarInfo').textContent=`Cuenta atrás`;
+    document.getElementById('recBeat').textContent=countInBeats-i;
+    document.getElementById('recBarInfo').textContent='Cuenta atrás';
     await new Promise(r=>setTimeout(r,beatMs));
   }
 
-  // Start recording
-  const mt=['audio/webm;codecs=opus','audio/mp4','audio/webm'].find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t));
-  try{
-    activeChunks=[];activeRecorder=mt?new MediaRecorder(activeStream,{mimeType:mt}):new MediaRecorder(activeStream);
-    state.recordingId=blockId;
-    document.getElementById('recStatus').innerHTML='<div class="rec-dot"></div><span>Grabando...</span>';
+  // Now the real recording starts — metronome ticking
+  document.getElementById('recStatus').innerHTML='<div class="rec-dot"></div><span>Grabando...</span>';
+  let currentBeat=0;
+  const tickRec=()=>{
+    if(!activeRecorder||activeRecorder.state==='inactive'||currentBeat>=totalBeats){
+      if(activeRecorder&&activeRecorder.state!=='inactive')activeRecorder.stop();
+      return;
+    }
+    const beatInBar=currentBeat%state.ts;
+    const barInBlock=Math.floor(currentBeat/state.ts);
+    const isDownbeat=beatInBar===0;
+    const isLastBar=barInBlock===block.bars-1;
 
-    activeRecorder.ondataavailable=e=>{if(e.data&&e.data.size)activeChunks.push(e.data)};
-    activeRecorder.onstop=()=>{
-      const blob=new Blob(activeChunks,{type:activeRecorder.mimeType||'audio/webm'});
-      const reader=new FileReader();
-      reader.onloadend=()=>{block.voiceClip=reader.result;state.recordingId=null;cleanupRec();overlay.innerHTML='';render();showVI('✅ Voz guardada')};
-      reader.readAsDataURL(blob);
-    };
-    activeRecorder.start();
+    if(isDownbeat){audio.click(1200,.5,.05)}else{audio.click(800,.25,.03)}
+    if(isLastBar&&block.claqueta){audio.click(2200,.15,.015)}
 
-    // Metronome during recording + progress
-    let currentBeat=0;
-    const tickRec=()=>{
-      if(!activeRecorder||activeRecorder.state==='inactive'||currentBeat>=totalBeats){
-        // Auto-stop when block duration reached
-        if(activeRecorder&&activeRecorder.state!=='inactive')activeRecorder.stop();
-        return;
-      }
-      const beatInBar=currentBeat%state.ts;
-      const barInBlock=Math.floor(currentBeat/state.ts);
-      const isDownbeat=beatInBar===0;
-      const isLastBar=barInBlock===block.bars-1;
+    const pct=(currentBeat+1)/totalBeats*100;
+    document.getElementById('recProgress').style.width=pct+'%';
+    document.getElementById('recBeat').textContent=beatInBar+1;
+    document.getElementById('recBarInfo').textContent=`Compás ${barInBlock+1} de ${block.bars}`;
+    if(isLastBar){document.getElementById('recStatus').innerHTML='<div class="rec-dot"></div><span style="color:var(--red)">¡Último compás!</span>'}
 
-      // Click
-      if(isDownbeat){audio.click(1200,.5,.05)}else{audio.click(800,.25,.03)}
-      // Intensify last bar
-      if(isLastBar){audio.click(2200,.15,.015)}
-
-      // Update overlay
-      const pct=(currentBeat+1)/totalBeats*100;
-      document.getElementById('recProgress').style.width=pct+'%';
-      document.getElementById('recBeat').textContent=beatInBar+1;
-      document.getElementById('recBarInfo').textContent=`Compás ${barInBlock+1} de ${block.bars}`;
-      if(isLastBar){document.getElementById('recStatus').innerHTML='<div class="rec-dot"></div><span style="color:var(--red)">¡Último compás!</span>'}
-
-      currentBeat++;
-      recTimer=setTimeout(tickRec,beatMs);
-    };
-    tickRec();
-
-  }catch(e){console.error(e);cleanupRec();overlay.innerHTML=''}
+    currentBeat++;
+    recTimer=setTimeout(tickRec,beatMs);
+  };
+  tickRec();
 }
+
+async function trimAndSaveClip(blob, trimStartSec, block, overlay){
+  try{
+    // Decode the full recording
+    const arrBuf=await blob.arrayBuffer();
+    const tmpCtx=new(window.AudioContext||window.webkitAudioContext)();
+    const decoded=await tmpCtx.decodeAudioData(arrBuf);
+    tmpCtx.close();
+
+    // Calculate trim: skip the count-in portion
+    const sr=decoded.sampleRate;
+    const trimSamples=Math.floor(trimStartSec*sr);
+    const newLength=Math.max(1,decoded.length-trimSamples);
+
+    // Create trimmed buffer via OfflineAudioContext
+    const offCtx=new OfflineAudioContext(decoded.numberOfChannels,newLength,sr);
+    const src=offCtx.createBufferSource();
+    src.buffer=decoded;
+    src.connect(offCtx.destination);
+    src.start(0,trimStartSec); // start playback from after count-in
+    const trimmed=await offCtx.startRendering();
+
+    // Re-encode to webm/mp4 via MediaRecorder from AudioBuffer
+    // Simplest: encode as WAV dataURL (always works, no codec issues)
+    const wavBlob=audioBufferToWav(trimmed);
+    const reader=new FileReader();
+    reader.onloadend=()=>{
+      block.voiceClip=reader.result;
+      state.recordingId=null;
+      cleanupRec();
+      overlay.innerHTML='';
+      render();
+      showVI('✅ Voz guardada');
+    };
+    reader.readAsDataURL(wavBlob);
+  }catch(e){
+    console.error('trimAndSaveClip error, saving untrimmed:',e);
+    // Fallback: save untrimmed
+    const reader=new FileReader();
+    reader.onloadend=()=>{block.voiceClip=reader.result;state.recordingId=null;cleanupRec();overlay.innerHTML='';render();showVI('✅ Voz guardada (sin trim)')};
+    reader.readAsDataURL(blob);
+  }
+}
+
+function audioBufferToWav(buffer){
+  const nc=buffer.numberOfChannels,sr=buffer.sampleRate,len=buffer.length;
+  const interleaved=new Float32Array(len*nc);
+  for(let ch=0;ch<nc;ch++){const d=buffer.getChannelData(ch);for(let i=0;i<len;i++)interleaved[i*nc+ch]=d[i]}
+  const bps=2,dataSize=len*nc*bps,bufSize=44+dataSize;
+  const ab=new ArrayBuffer(bufSize),v=new DataView(ab);
+  let o=0;const ws=s=>{for(let i=0;i<s.length;i++)v.setUint8(o++,s.charCodeAt(i))};
+  ws('RIFF');v.setUint32(o,36+dataSize,true);o+=4;ws('WAVE');ws('fmt ');
+  v.setUint32(o,16,true);o+=4;v.setUint16(o,1,true);o+=2;v.setUint16(o,nc,true);o+=2;
+  v.setUint32(o,sr,true);o+=4;v.setUint32(o,sr*nc*bps,true);o+=4;
+  v.setUint16(o,nc*bps,true);o+=2;v.setUint16(o,16,true);o+=2;
+  ws('data');v.setUint32(o,dataSize,true);o+=4;
+  for(let i=0;i<interleaved.length;i++){const s=Math.max(-1,Math.min(1,interleaved[i]));v.setInt16(o,s<0?s*0x8000:s*0x7FFF,true);o+=2}
+  return new Blob([ab],{type:'audio/wav'});
+}
+
 function stopBlockVoiceRecording(){
   if(recTimer){clearTimeout(recTimer);recTimer=null}
   if(activeRecorder&&activeRecorder.state!=='inactive')activeRecorder.stop();
@@ -433,7 +486,7 @@ async function exportAudio(blocks,bpm,ts,reverbBase,reverbInt,onProgress,onFinis
         if(bl.voice&&bl.voiceClip){const cd=clips.get(bl.voiceClip);if(cd){const ss=Math.floor(t*sr);for(let si=0;si<cd.length&&(ss+si)<data.length;si++)data[ss+si]+=cd[si]*.9}}}
       else if(clq){addPulse(data,sr,t,dB?1400:1000,(dB?.7:.5)*wb,dB?.06:.04);addPulse(data,sr,t,2200,.25*wb,.015,'triangle')}
       else if(dB){addPulse(data,sr,t,1200,.5*wb,.05)}else{addPulse(data,sr,t,800,.25*wb,.03)}
-      if(hN&&lB){
+      if(hN&&lB&&bl.claqueta){
         if(ts>=4){const cs=ts-4,cb=bIBar-cs;if(cb>=0&&cb<=3){addPulse(data,sr,t,cF[cb],.42,cD[cb],'triangle')}}
         else if(ts===3&&bIBar<=2){addPulse(data,sr,t,cF[[0,2,3][bIBar]],.42,cD[[0,2,3][bIBar]],'triangle')}}
       beat++;if(beat%16===0)onProgress(beat/totB);
@@ -554,9 +607,9 @@ function renderBlocks(){
     if(!state.playing){card.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain',idx);card.classList.add('dragging')});card.addEventListener('dragend',()=>card.classList.remove('dragging'));card.addEventListener('dragover',e=>{e.preventDefault();card.classList.add('drag-over')});card.addEventListener('dragleave',()=>card.classList.remove('drag-over'));card.addEventListener('drop',e=>{e.preventDefault();card.classList.remove('drag-over');const fi=parseInt(e.dataTransfer.getData('text/plain'));if(fi!==idx){const[m]=state.blocks.splice(fi,1);state.blocks.splice(idx,0,m);render()}})}
     list.appendChild(card);
   });
-  if(!state.playing){const d=document.createElement('div');if(!state.showAddPanel){d.innerHTML='<button class="add-btn" id="addBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Añadir bloque</button>';d.querySelector('#addBtn').addEventListener('click',()=>{state.showAddPanel=true;render()})}else{d.innerHTML=`<div class="add-panel open"><div class="add-panel-title">COMPASES DEL BLOQUE</div><div class="add-sizes">${BLOCK_SIZES.map(s=>`<button class="add-size-btn" data-size="${s}">${s}</button>`).join('')}</div><button class="add-cancel" id="addCancel">Cancelar</button></div>`;d.querySelectorAll('.add-size-btn').forEach(b=>b.addEventListener('click',()=>addBlock(parseInt(b.dataset.size))));d.querySelector('#addCancel').addEventListener('click',()=>{state.showAddPanel=false;render()})}list.appendChild(d)}
+  if(!state.playing){const d=document.createElement('div');if(!state.showAddPanel){d.innerHTML='<button class="add-btn" id="addBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Añadir bloque</button>';d.querySelector('#addBtn').addEventListener('click',()=>{state.showAddPanel=true;render()})}else{d.innerHTML=`<div class="add-panel open"><div class="add-panel-title">COMPASES DEL BLOQUE</div><div class="add-sizes">${BLOCK_SIZES.map(s=>`<button class="add-size-btn" data-size="${s}">${s}</button>`).join('')}</div><div style="display:flex;gap:6px;margin-top:8px"><input type="number" id="customBarsInput" class="edit-input" placeholder="Otro..." min="1" max="999" style="flex:1;text-align:center;font-size:16px;font-weight:700"><button class="add-size-btn" id="customBarsBtn" style="flex:0;padding:12px 16px;font-size:14px">OK</button></div><button class="add-cancel" id="addCancel">Cancelar</button></div>`;d.querySelectorAll('.add-size-btn[data-size]').forEach(b=>b.addEventListener('click',()=>addBlock(parseInt(b.dataset.size))));d.querySelector('#customBarsBtn').addEventListener('click',()=>{const v=parseInt(d.querySelector('#customBarsInput').value);if(v>=1&&v<=999)addBlock(v)});d.querySelector('#customBarsInput').addEventListener('keydown',e=>{if(e.key==='Enter'){const v=parseInt(e.target.value);if(v>=1&&v<=999)addBlock(v)}});d.querySelector('#addCancel').addEventListener('click',()=>{state.showAddPanel=false;render()})}list.appendChild(d)}
 }
-function buildEditHTML(block){return`<div><span class="edit-label">NOMBRE</span><input class="edit-input" value="${block.name}" data-field="name" data-id="${block.id}"><div class="preset-tags">${PRESET_NAMES.map(n=>`<button class="preset-tag ${block.name===n?'active':''}" data-preset="${n}">${n}</button>`).join('')}</div></div><div><span class="edit-label">COMPASES</span><div class="bars-row">${BLOCK_SIZES.map(s=>`<button class="bars-btn ${block.bars===s?'active':''}" data-bars="${s}">${s}</button>`).join('')}</div></div><div><span class="edit-label">COLOR</span><div class="colors-row">${BLOCK_COLORS.map(c=>`<button class="color-swatch ${block.color===c?'active':''}" data-color="${c}" style="background:${c}"></button>`).join('')}</div></div><div class="toggle-row"><button class="toggle-btn ${block.claqueta?'on':''}" data-toggle="claqueta" data-id="${block.id}">🔔 Claqueta</button><button class="toggle-btn ${block.voice?'on':''}" data-toggle="voice" data-id="${block.id}">🎙 Voz</button></div><div class="action-row"><button class="action-btn" data-action="duplicate" data-id="${block.id}">📋 Duplicar</button><button class="action-btn danger" data-action="delete" data-id="${block.id}">🗑 Eliminar</button></div>`}
+function buildEditHTML(block){return`<div><span class="edit-label">NOMBRE</span><input class="edit-input" value="${block.name}" data-field="name" data-id="${block.id}"><div class="preset-tags">${PRESET_NAMES.map(n=>`<button class="preset-tag ${block.name===n?'active':''}" data-preset="${n}">${n}</button>`).join('')}</div></div><div><span class="edit-label">COMPASES</span><div class="bars-row"><input type="number" class="edit-input" value="${block.bars}" min="1" max="999" data-field="bars" data-id="${block.id}" style="width:70px;text-align:center;font-size:18px;font-weight:700">${BLOCK_SIZES.map(s=>`<button class="bars-btn ${block.bars===s?'active':''}" data-bars="${s}">${s}</button>`).join('')}</div></div><div><span class="edit-label">COLOR</span><div class="colors-row">${BLOCK_COLORS.map(c=>`<button class="color-swatch ${block.color===c?'active':''}" data-color="${c}" style="background:${c}"></button>`).join('')}</div></div><div class="toggle-row"><button class="toggle-btn ${block.claqueta?'on':''}" data-toggle="claqueta" data-id="${block.id}">🔔 Claqueta</button><button class="toggle-btn ${block.voice?'on':''}" data-toggle="voice" data-id="${block.id}">🎙 Voz</button></div><div class="action-row"><button class="action-btn" data-action="duplicate" data-id="${block.id}">📋 Duplicar</button><button class="action-btn danger" data-action="delete" data-id="${block.id}">🗑 Eliminar</button></div>`}
 
 document.getElementById('blockList').addEventListener('click',e=>{
   const t=e.target.closest('[data-preset]');if(t){const b=state.blocks.find(x=>x.id===state.editingId);if(b){b.name=t.dataset.preset;render()}return}
@@ -565,7 +618,10 @@ document.getElementById('blockList').addEventListener('click',e=>{
   const tg=e.target.closest('[data-toggle]');if(tg){const b=state.blocks.find(x=>x.id===parseInt(tg.dataset.id));if(b){b[tg.dataset.toggle]=!b[tg.dataset.toggle];render()}return}
   const ac=e.target.closest('[data-action]');if(ac){const id=parseInt(ac.dataset.id);if(ac.dataset.action==='delete'){state.blocks=state.blocks.filter(x=>x.id!==id);if(state.editingId===id)state.editingId=null;render()}else if(ac.dataset.action==='duplicate'){const i=state.blocks.findIndex(x=>x.id===id);if(i>-1){state.blocks.splice(i+1,0,{...state.blocks[i],id:state.nextId++,name:state.blocks[i].name+' (copia)'});render()}}}
 });
-document.getElementById('blockList').addEventListener('input',e=>{if(e.target.dataset.field==='name'){const b=state.blocks.find(x=>x.id===parseInt(e.target.dataset.id));if(b)b.name=e.target.value;updateDuration()}});
+document.getElementById('blockList').addEventListener('input',e=>{
+  if(e.target.dataset.field==='name'){const b=state.blocks.find(x=>x.id===parseInt(e.target.dataset.id));if(b)b.name=e.target.value;updateDuration()}
+  if(e.target.dataset.field==='bars'){const b=state.blocks.find(x=>x.id===parseInt(e.target.dataset.id));if(b){const v=parseInt(e.target.value);if(v>=1&&v<=999){b.bars=v;updateDuration();updateBottomBar()}}}
+});
 
 // Header
 document.getElementById('bpmInput').addEventListener('change',e=>{state.bpm=Math.max(30,Math.min(300,parseInt(e.target.value)||120));e.target.value=state.bpm;updateDuration();updateBottomBar()});
