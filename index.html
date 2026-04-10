@@ -153,6 +153,7 @@ input[type=range]{width:100%;accent-color:var(--y)}
         BANDMAP
       </div>
       <div class="hdr-btns">
+        <button class="hdr-btn" id="newProjBtn" title="Nuevo proyecto">✚</button>
         <button class="hdr-btn" id="projBtn">📁</button>
         <button class="hdr-btn" id="settingsBtn">⚙️</button>
       </div>
@@ -170,9 +171,15 @@ input[type=range]{width:100%;accent-color:var(--y)}
 
   <!-- Settings -->
   <div class="panel" id="settingsPanel">
+    <div class="setting-row"><div class="setting-header"><span>🔊 VOL. CLAQUETA</span><span id="volClickVal">100%</span></div><input type="range" id="volClickSlider" min="0" max="100" value="100"></div>
+    <div class="setting-row"><div class="setting-header"><span>🎙 VOL. VOZ</span><span id="volVoiceVal">100%</span></div><input type="range" id="volVoiceSlider" min="0" max="100" value="100"></div>
     <div class="setting-row"><div class="setting-header"><span>REVERB BASE</span><span id="reverbBaseVal">15%</span></div><input type="range" id="reverbBaseSlider" min="0" max="80" value="15"></div>
     <div class="setting-row"><div class="setting-header"><span>INTENSIDAD TRANSICIÓN</span><span id="reverbIntVal">50%</span></div><input type="range" id="reverbIntSlider" min="0" max="100" value="50"><div class="setting-labels"><span>SMOOTH</span><span>DRÁSTICO</span></div></div>
-    <div class="setting-row" style="margin:0"><span style="font-size:9px;opacity:.4">🎙 Graba tu voz en cada bloque. Se incluirá en el MP3.</span></div>
+    <div style="border-top:1px solid var(--border);margin:10px 0;padding-top:10px">
+      <div class="setting-row"><div class="setting-header"><span>🔁 DELAY TIEMPO</span><span id="delayTimeVal">0 ms</span></div><input type="range" id="delayTimeSlider" min="0" max="750" value="0" step="1"></div>
+      <div class="setting-row"><div class="setting-header"><span>🔁 DELAY FEEDBACK</span><span id="delayFbVal">30%</span></div><input type="range" id="delayFbSlider" min="0" max="90" value="30"></div>
+      <div class="setting-row" style="margin:0"><div class="setting-header"><span>🔁 DELAY MIX</span><span id="delayMixVal">0%</span></div><input type="range" id="delayMixSlider" min="0" max="100" value="0"></div>
+    </div>
   </div>
 
   <!-- Projects -->
@@ -229,12 +236,10 @@ const PRESET_NAMES=["Intro","Verso","Pre-Estribillo","Estribillo","Puente","Solo
 const GIST_ID = '20829bd2aafbfe04044355d43c300a32';
 
 let state={bpm:120,ts:4,reverbBase:0.15,reverbIntensity:0.5,
-  blocks:[
-    {id:1,name:"Intro",bars:8,color:"#00E676",claqueta:true,voice:true,voiceClip:null},
-    {id:2,name:"Verso 1",bars:16,color:"#FFD600",claqueta:true,voice:true,voiceClip:null},
-    {id:3,name:"Estribillo",bars:8,color:"#00B0FF",claqueta:true,voice:true,voiceClip:null},
-  ],
-  nextId:4,playing:false,recordingId:null,editingId:null,
+  volClick:1.0,volVoice:1.0,
+  delayTime:0,delayFeedback:0.3,delayMix:0,
+  blocks:[],
+  nextId:1,playing:false,recordingId:null,editingId:null,
   showSettings:false,showAddPanel:false,showProjects:false
 };
 
@@ -262,23 +267,56 @@ async function gistWrite(projects){
 
 // ═══════ AUDIO ENGINE ═══════
 const audio={
-  ctx:null,masterGain:null,reverbNode:null,reverbGain:null,dryGain:null,
+  ctx:null,masterGain:null,clickGain:null,voiceGain:null,
+  reverbNode:null,reverbGain:null,dryGain:null,
+  delayNode:null,delayFb:null,delayWet:null,delayDry:null,
   isPlaying:false,timer:null,blockIdx:0,clipCache:new Map(),
   init(){
     if(this.ctx)return;this.ctx=new(window.AudioContext||window.webkitAudioContext)();
-    this.masterGain=this.ctx.createGain();this.masterGain.gain.value=0.5;
+    // Master at full volume — individual gains control levels
+    this.masterGain=this.ctx.createGain();this.masterGain.gain.value=1.0;
+    // Separate gains for click and voice
+    this.clickGain=this.ctx.createGain();this.clickGain.gain.value=state.volClick;
+    this.voiceGain=this.ctx.createGain();this.voiceGain.gain.value=state.volVoice;
+    this.clickGain.connect(this.masterGain);
+    this.voiceGain.connect(this.masterGain);
+    // Reverb
     const sr=this.ctx.sampleRate,len=sr*2,imp=this.ctx.createBuffer(2,len,sr);
     for(let c=0;c<2;c++){const d=imp.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.5)}
     this.reverbNode=this.ctx.createConvolver();this.reverbNode.buffer=imp;
     this.reverbGain=this.ctx.createGain();this.reverbGain.gain.value=0.15;
     this.dryGain=this.ctx.createGain();this.dryGain.gain.value=0.85;
-    this.masterGain.connect(this.dryGain);this.dryGain.connect(this.ctx.destination);
-    this.masterGain.connect(this.reverbNode);this.reverbNode.connect(this.reverbGain);this.reverbGain.connect(this.ctx.destination);
+    // Delay
+    this.delayNode=this.ctx.createDelay(1.0);this.delayNode.delayTime.value=state.delayTime/1000;
+    this.delayFb=this.ctx.createGain();this.delayFb.gain.value=state.delayFeedback;
+    this.delayWet=this.ctx.createGain();this.delayWet.gain.value=state.delayMix;
+    this.delayDry=this.ctx.createGain();this.delayDry.gain.value=1;
+    // Routing: master -> dry + reverb + delay
+    this.masterGain.connect(this.dryGain);
+    this.masterGain.connect(this.reverbNode);this.reverbNode.connect(this.reverbGain);
+    this.masterGain.connect(this.delayDry); // dry path
+    this.masterGain.connect(this.delayNode); // into delay
+    this.delayNode.connect(this.delayFb);this.delayFb.connect(this.delayNode); // feedback loop
+    this.delayNode.connect(this.delayWet); // wet out
+    // All to destination
+    this.dryGain.connect(this.ctx.destination);
+    this.reverbGain.connect(this.ctx.destination);
+    this.delayWet.connect(this.ctx.destination);
+    this.delayDry.connect(this.ctx.destination);
+  },
+  updateVolumes(){
+    if(this.clickGain)this.clickGain.gain.value=state.volClick;
+    if(this.voiceGain)this.voiceGain.gain.value=state.volVoice;
+  },
+  updateDelay(){
+    if(this.delayNode)this.delayNode.delayTime.value=state.delayTime/1000;
+    if(this.delayFb)this.delayFb.gain.value=state.delayFeedback;
+    if(this.delayWet)this.delayWet.gain.value=state.delayMix;
   },
   setReverb(w){if(!this.reverbGain)return;this.reverbGain.gain.value=Math.min(1,w);this.dryGain.gain.value=Math.max(0,1-w)},
-  click(f,v,d=.04){if(!this.ctx)return;const t=this.ctx.currentTime;const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.frequency.value=f;o.type="sine";g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g);g.connect(this.masterGain);o.start(t);o.stop(t+d)},
-  countTone(i){const F=[1600,1800,2000,2400],V=[.3,.3,.35,.5],D=[.06,.06,.06,.09];if(!this.ctx)return;const t=this.ctx.currentTime;const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.frequency.value=F[i]||2400;o.type="triangle";g.gain.setValueAtTime(V[i]||.4,t);g.gain.exponentialRampToValueAtTime(.001,t+(D[i]||.07));o.connect(g);g.connect(this.masterGain);o.start(t);o.stop(t+(D[i]||.07))},
-  async playRecordedCue(dataUrl){if(!this.ctx||!dataUrl)return;try{let buf=this.clipCache.get(dataUrl);if(!buf){const arr=await fetch(dataUrl).then(r=>r.arrayBuffer());buf=await this.ctx.decodeAudioData(arr.slice(0));this.clipCache.set(dataUrl,buf)}const s=this.ctx.createBufferSource(),g=this.ctx.createGain();g.gain.value=1;s.buffer=buf;s.connect(g);g.connect(this.masterGain);s.start()}catch(e){console.error('playRecordedCue',e)}},
+  click(f,v,d=.04){if(!this.ctx)return;const t=this.ctx.currentTime;const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.frequency.value=f;o.type="sine";g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g);g.connect(this.clickGain);o.start(t);o.stop(t+d)},
+  countTone(i){const F=[1600,1800,2000,2400],V=[.3,.3,.35,.5],D=[.06,.06,.06,.09];if(!this.ctx)return;const t=this.ctx.currentTime;const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.frequency.value=F[i]||2400;o.type="triangle";g.gain.setValueAtTime(V[i]||.4,t);g.gain.exponentialRampToValueAtTime(.001,t+(D[i]||.07));o.connect(g);g.connect(this.clickGain);o.start(t);o.stop(t+(D[i]||.07))},
+  async playRecordedCue(dataUrl){if(!this.ctx||!dataUrl)return;try{let buf=this.clipCache.get(dataUrl);if(!buf){const arr=await fetch(dataUrl).then(r=>r.arrayBuffer());buf=await this.ctx.decodeAudioData(arr.slice(0));this.clipCache.set(dataUrl,buf)}const s=this.ctx.createBufferSource(),g=this.ctx.createGain();g.gain.value=1;s.buffer=buf;s.connect(g);g.connect(this.voiceGain);s.start()}catch(e){console.error('playRecordedCue',e)}},
   start(blocks,bpm,ts,reverbBase,reverbInt,onTick,onFinish){
     this.init();this.isPlaying=true;this.blockIdx=0;
     const interval=60000/bpm;let globalBeat=0,beatInBlock=0;
@@ -475,20 +513,20 @@ async function exportAudio(blocks,bpm,ts,reverbBase,reverbInt,onProgress,onFinis
   const clips=new Map();
   for(const b of blocks){if(b.voiceClip&&!clips.has(b.voiceClip)){const m=await decodeClipToMono(b.voiceClip,sr);if(m)clips.set(b.voiceClip,m)}}
   const cF=[1600,1800,2000,2400],cD=[.06,.06,.06,.09];
+  const vC=state.volClick,vV=state.volVoice; // volume multipliers
   let beat=0;
   for(let bi=0;bi<blocks.length;bi++){const bl=blocks[bi],tBB=bl.bars*ts;
     for(let bib=0;bib<tBB;bib++){const t=beat*iv,bIBar=bib%ts,barIB=Math.floor(bib/ts);
       const dB=bIBar===0,lB=barIB===bl.bars-1,hN=bi<blocks.length-1,clq=bl.claqueta&&lB&&hN,ent=bib===0;
       const pr=bib/tBB;let rv=reverbBase;if(pr>.7)rv=reverbBase+(.9-reverbBase)*Math.pow((pr-.7)/.3,2-reverbInt*1.5);
-      const wb=1+rv*.25;
+      const wb=(1+rv*.25)*vC;
       if(ent){addPulse(data,sr,t,1400,.85*wb,.08);addPulse(data,sr,t,700,.35*wb,.06);
-        // Mix voice clip from the start of the block
-        if(bl.voice&&bl.voiceClip){const cd=clips.get(bl.voiceClip);if(cd){const ss=Math.floor(t*sr);for(let si=0;si<cd.length&&(ss+si)<data.length;si++)data[ss+si]+=cd[si]*.9}}}
+        if(bl.voice&&bl.voiceClip){const cd=clips.get(bl.voiceClip);if(cd){const ss=Math.floor(t*sr);for(let si=0;si<cd.length&&(ss+si)<data.length;si++)data[ss+si]+=cd[si]*vV}}}
       else if(clq){addPulse(data,sr,t,dB?1400:1000,(dB?.7:.5)*wb,dB?.06:.04);addPulse(data,sr,t,2200,.25*wb,.015,'triangle')}
       else if(dB){addPulse(data,sr,t,1200,.5*wb,.05)}else{addPulse(data,sr,t,800,.25*wb,.03)}
       if(hN&&lB&&bl.claqueta){
-        if(ts>=4){const cs=ts-4,cb=bIBar-cs;if(cb>=0&&cb<=3){addPulse(data,sr,t,cF[cb],.42,cD[cb],'triangle')}}
-        else if(ts===3&&bIBar<=2){addPulse(data,sr,t,cF[[0,2,3][bIBar]],.42,cD[[0,2,3][bIBar]],'triangle')}}
+        if(ts>=4){const cs=ts-4,cb=bIBar-cs;if(cb>=0&&cb<=3){addPulse(data,sr,t,cF[cb],.42*vC,cD[cb],'triangle')}}
+        else if(ts===3&&bIBar<=2){addPulse(data,sr,t,cF[[0,2,3][bIBar]],.42*vC,cD[[0,2,3][bIBar]],'triangle')}}
       beat++;if(beat%16===0)onProgress(beat/totB);
     }
   }
@@ -514,17 +552,27 @@ async function saveFile(blob,filename){
 
 // ═══════ PROJECT SYSTEM (Gist) ═══════
 function getProjectData(name){
-  return{name,version:1,savedAt:new Date().toISOString(),bpm:state.bpm,ts:state.ts,
+  return{name,version:2,savedAt:new Date().toISOString(),bpm:state.bpm,ts:state.ts,
     reverbBase:state.reverbBase,reverbIntensity:state.reverbIntensity,
+    volClick:state.volClick,volVoice:state.volVoice,
+    delayTime:state.delayTime,delayFeedback:state.delayFeedback,delayMix:state.delayMix,
     blocks:state.blocks.map(b=>({name:b.name,bars:b.bars,color:b.color,claqueta:b.claqueta,voice:b.voice,voiceClip:b.voiceClip}))}
 }
 function loadProjectData(data){
   state.bpm=data.bpm||120;state.ts=data.ts||4;state.reverbBase=data.reverbBase||.15;state.reverbIntensity=data.reverbIntensity||.5;
+  state.volClick=data.volClick!=null?data.volClick:1;state.volVoice=data.volVoice!=null?data.volVoice:1;
+  state.delayTime=data.delayTime||0;state.delayFeedback=data.delayFeedback!=null?data.delayFeedback:.3;state.delayMix=data.delayMix||0;
   state.blocks=(data.blocks||[]).map((b,i)=>({id:state.nextId++,name:b.name||'Bloque',bars:b.bars||8,color:b.color||BLOCK_COLORS[i%BLOCK_COLORS.length],claqueta:b.claqueta!==false,voice:b.voice!==false,voiceClip:b.voiceClip||null}));
   document.getElementById('bpmInput').value=state.bpm;
+  document.getElementById('volClickSlider').value=Math.round(state.volClick*100);document.getElementById('volClickVal').textContent=Math.round(state.volClick*100)+'%';
+  document.getElementById('volVoiceSlider').value=Math.round(state.volVoice*100);document.getElementById('volVoiceVal').textContent=Math.round(state.volVoice*100)+'%';
   document.getElementById('reverbBaseSlider').value=state.reverbBase*100;document.getElementById('reverbBaseVal').textContent=Math.round(state.reverbBase*100)+'%';
   document.getElementById('reverbIntSlider').value=state.reverbIntensity*100;document.getElementById('reverbIntVal').textContent=Math.round(state.reverbIntensity*100)+'%';
+  document.getElementById('delayTimeSlider').value=state.delayTime;document.getElementById('delayTimeVal').textContent=state.delayTime+' ms';
+  document.getElementById('delayFbSlider').value=Math.round(state.delayFeedback*100);document.getElementById('delayFbVal').textContent=Math.round(state.delayFeedback*100)+'%';
+  document.getElementById('delayMixSlider').value=Math.round(state.delayMix*100);document.getElementById('delayMixVal').textContent=Math.round(state.delayMix*100)+'%';
   document.querySelectorAll('.ts-btn').forEach(b=>b.classList.toggle('active',parseInt(b.textContent)===state.ts));
+  audio.updateVolumes();audio.updateDelay();
   state.editingId=null;render();
 }
 
@@ -595,7 +643,24 @@ function updatePlayBtn(){const btn=document.getElementById('playBtn'),exp=docume
 
 function renderBlocks(){
   const list=document.getElementById('blockList');list.innerHTML='';
-  if(!state.blocks.length)list.innerHTML='<div class="empty-msg">Añade bloques para construir la estructura</div>';
+  if(!state.blocks.length&&!state.playing){
+    list.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;gap:16px;opacity:.5">
+      <button id="emptyAddBtn" style="width:80px;height:80px;border-radius:20px;border:2px dashed var(--y);display:flex;align-items:center;justify-content:center;font-size:40px;color:var(--y);background:transparent">+</button>
+      <span style="font-size:13px;text-align:center">Añadir el primer bloque</span>
+    </div>`;
+    document.getElementById('emptyAddBtn').addEventListener('click',()=>{state.showAddPanel=true;render()});
+    // Still show add panel if open
+    if(state.showAddPanel){
+      const d=document.createElement('div');d.style.padding='0 16px';
+      d.innerHTML=`<div class="add-panel open"><div class="add-panel-title">COMPASES DEL BLOQUE</div><div class="add-sizes">${BLOCK_SIZES.map(s=>`<button class="add-size-btn" data-size="${s}">${s}</button>`).join('')}</div><div style="display:flex;gap:6px;margin-top:8px"><input type="number" id="customBarsInput" class="edit-input" placeholder="Otro..." min="1" max="999" style="flex:1;text-align:center;font-size:16px;font-weight:700"><button class="add-size-btn" id="customBarsBtn" style="flex:0;padding:12px 16px;font-size:14px">OK</button></div><button class="add-cancel" id="addCancel">Cancelar</button></div>`;
+      d.querySelectorAll('.add-size-btn[data-size]').forEach(b=>b.addEventListener('click',()=>addBlock(parseInt(b.dataset.size))));
+      const cbBtn=d.querySelector('#customBarsBtn');if(cbBtn)cbBtn.addEventListener('click',()=>{const v=parseInt(d.querySelector('#customBarsInput').value);if(v>=1&&v<=999)addBlock(v)});
+      const cbIn=d.querySelector('#customBarsInput');if(cbIn)cbIn.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=parseInt(e.target.value);if(v>=1&&v<=999)addBlock(v)}});
+      d.querySelector('#addCancel').addEventListener('click',()=>{state.showAddPanel=false;render()});
+      list.appendChild(d);
+    }
+    return;
+  }
   state.blocks.forEach((block,idx)=>{
     const card=document.createElement('div');card.className='block-card';card.dataset.blockIdx=idx;card.draggable=!state.playing;card.id='block-'+block.id;
     const prog=document.createElement('div');prog.className='block-progress-bg';prog.style.background=block.color+'15';prog.style.width='0%';prog.id='blockProg-'+block.id;card.appendChild(prog);
@@ -629,10 +694,33 @@ document.getElementById('bpmUp').addEventListener('click',()=>{state.bpm=Math.mi
 document.getElementById('bpmDown').addEventListener('click',()=>{state.bpm=Math.max(30,state.bpm-1);document.getElementById('bpmInput').value=state.bpm;updateDuration();updateBottomBar()});
 const tsBox=document.getElementById('tsBox');[3,4,6].forEach(t=>{const btn=document.createElement('button');btn.className='ts-btn'+(state.ts===t?' active':'');btn.textContent=t+'/4';btn.addEventListener('click',()=>{state.ts=t;tsBox.querySelectorAll('.ts-btn').forEach(b=>b.classList.toggle('active',parseInt(b.textContent)===t));updateDuration();updateBottomBar()});tsBox.appendChild(btn)});
 
+document.getElementById('newProjBtn').addEventListener('click',()=>{
+  if(state.playing)return;
+  if(state.blocks.length&&!confirm('¿Crear nuevo proyecto? Se perderán los cambios no guardados.'))return;
+  state.blocks=[];state.nextId=1;state.bpm=120;state.ts=4;state.reverbBase=0.15;state.reverbIntensity=0.5;
+  state.volClick=1;state.volVoice=1;state.delayTime=0;state.delayFeedback=0.3;state.delayMix=0;
+  state.editingId=null;state.showAddPanel=false;
+  document.getElementById('bpmInput').value=120;
+  document.getElementById('volClickSlider').value=100;document.getElementById('volClickVal').textContent='100%';
+  document.getElementById('volVoiceSlider').value=100;document.getElementById('volVoiceVal').textContent='100%';
+  document.getElementById('reverbBaseSlider').value=15;document.getElementById('reverbBaseVal').textContent='15%';
+  document.getElementById('reverbIntSlider').value=50;document.getElementById('reverbIntVal').textContent='50%';
+  document.getElementById('delayTimeSlider').value=0;document.getElementById('delayTimeVal').textContent='0 ms';
+  document.getElementById('delayFbSlider').value=30;document.getElementById('delayFbVal').textContent='30%';
+  document.getElementById('delayMixSlider').value=0;document.getElementById('delayMixVal').textContent='0%';
+  document.querySelectorAll('.ts-btn').forEach(b=>b.classList.toggle('active',parseInt(b.textContent)===4));
+  audio.updateVolumes();audio.updateDelay();
+  render();showVI('✚ Nuevo proyecto');
+});
 document.getElementById('settingsBtn').addEventListener('click',()=>{state.showSettings=!state.showSettings;state.showProjects=false;document.getElementById('settingsPanel').classList.toggle('open',state.showSettings);document.getElementById('projectsPanel').classList.remove('open');document.getElementById('settingsBtn').classList.toggle('active',state.showSettings);document.getElementById('projBtn').classList.remove('active')});
 document.getElementById('projBtn').addEventListener('click',()=>{state.showProjects=!state.showProjects;state.showSettings=false;document.getElementById('projectsPanel').classList.toggle('open',state.showProjects);document.getElementById('settingsPanel').classList.remove('open');document.getElementById('projBtn').classList.toggle('active',state.showProjects);document.getElementById('settingsBtn').classList.remove('active');if(state.showProjects)checkToken()});
+document.getElementById('volClickSlider').addEventListener('input',e=>{state.volClick=+e.target.value/100;document.getElementById('volClickVal').textContent=e.target.value+'%';audio.updateVolumes()});
+document.getElementById('volVoiceSlider').addEventListener('input',e=>{state.volVoice=+e.target.value/100;document.getElementById('volVoiceVal').textContent=e.target.value+'%';audio.updateVolumes()});
 document.getElementById('reverbBaseSlider').addEventListener('input',e=>{state.reverbBase=+e.target.value/100;document.getElementById('reverbBaseVal').textContent=e.target.value+'%'});
 document.getElementById('reverbIntSlider').addEventListener('input',e=>{state.reverbIntensity=+e.target.value/100;document.getElementById('reverbIntVal').textContent=e.target.value+'%'});
+document.getElementById('delayTimeSlider').addEventListener('input',e=>{state.delayTime=+e.target.value;document.getElementById('delayTimeVal').textContent=e.target.value+' ms';audio.updateDelay()});
+document.getElementById('delayFbSlider').addEventListener('input',e=>{state.delayFeedback=+e.target.value/100;document.getElementById('delayFbVal').textContent=e.target.value+'%';audio.updateDelay()});
+document.getElementById('delayMixSlider').addEventListener('input',e=>{state.delayMix=+e.target.value/100;document.getElementById('delayMixVal').textContent=e.target.value+'%';audio.updateDelay()});
 
 // PLAY
 document.getElementById('playBtn').addEventListener('click',async()=>{
