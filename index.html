@@ -72,10 +72,22 @@ input[type=range]{width:100%;accent-color:var(--y)}
 .block-info{flex:1;min-width:0}
 .name-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .block-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mic-btn{width:22px;height:22px;border-radius:6px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;opacity:.85}
+.mic-btn{width:36px;height:36px;border-radius:10px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;opacity:.85}
 .mic-btn.has-clip{border-color:var(--y);background:rgba(255,214,0,.12)}
 .mic-btn.recording{border-color:var(--red);color:var(--red);background:rgba(255,23,68,.16);animation:pulseRec .8s infinite}
 @keyframes pulseRec{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+
+/* Recording overlay */
+.rec-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px}
+.rec-title{font-size:14px;font-weight:700;letter-spacing:2px}
+.rec-beat{font-size:60px;font-weight:700;line-height:1}
+.rec-bar-info{font-size:12px;opacity:.5}
+.rec-progress-track{width:100%;max-width:320px;height:8px;background:var(--border);border-radius:4px;overflow:hidden;position:relative}
+.rec-progress-fill{height:100%;border-radius:4px;transition:width .1s linear}
+.rec-progress-markers{width:100%;max-width:320px;display:flex;justify-content:space-between;font-size:8px;opacity:.3;margin-top:2px}
+.rec-status{font-size:11px;opacity:.6;display:flex;align-items:center;gap:6px}
+.rec-dot{width:10px;height:10px;border-radius:50%;background:var(--red);animation:pulseRec .8s infinite}
+.rec-stop-btn{margin-top:12px;background:var(--red);color:var(--bg);border-radius:12px;padding:14px 32px;font-size:14px;font-weight:700}
 .block-meta{font-size:9px;opacity:.4;display:flex;gap:7px;margin-top:1px}
 .block-beat-display{text-align:center;flex-shrink:0}
 .block-beat-num{font-size:22px;font-weight:700;line-height:1}
@@ -199,6 +211,7 @@ input[type=range]{width:100%;accent-color:var(--y)}
   <div class="block-list" id="blockList"></div>
   <div class="voice-indicator" id="voiceIndicator"></div>
   <div class="fullscreen-pulse" id="fullscreenPulse"></div>
+  <div id="recOverlay"></div>
   <div class="global-progress" id="globalProgress"><div class="global-progress-fill" id="globalProgressFill"></div></div>
 
   <div class="bottom-bar">
@@ -281,9 +294,10 @@ const audio={
       else if(isClaqueta){this.click(isDownbeat?1400:1000,isDownbeat?.7:.5,isDownbeat?.06:.04);this.click(2200,.25,.015)}
       else if(isDownbeat){this.click(1200,.5,.05)}else{this.click(800,.25,.03)}
       if(hasNext&&isLastBar){const nb=blocks[this.blockIdx+1],nc=nb.color||'#FFD600';
+        // Play current block's voice clip on first count beat
         if(ts>=4){const cs=ts-4,cb=beatInBar-cs;if(cb>=0&&cb<=3){this.countTone(cb);triggerPulse(nc,[.28,.42,.62,.82][cb]);
-          if(cb===0&&nb.voice&&nb.voiceClip){this.playRecordedCue(nb.voiceClip);showVI("🎙 "+nb.name)}else if(cb===1)showVI("2");else if(cb===2)showVI("3");else if(cb===3)showVI("4")}}
-        else if(ts===3&&beatInBar<=2){const m=[0,2,3][beatInBar];this.countTone(m);triggerPulse(nc,[.34,.58,.82][beatInBar]);if(beatInBar===0&&nb.voice&&nb.voiceClip){this.playRecordedCue(nb.voiceClip);showVI("🎙 "+nb.name)}}}
+          if(cb===0&&block.voice&&block.voiceClip){this.playRecordedCue(block.voiceClip);showVI("🎙 "+block.name)}else if(cb===1)showVI("2");else if(cb===2)showVI("3");else if(cb===3)showVI("4")}}
+        else if(ts===3&&beatInBar<=2){const m=[0,2,3][beatInBar];this.countTone(m);triggerPulse(nc,[.34,.58,.82][beatInBar]);if(beatInBar===0&&block.voice&&block.voiceClip){this.playRecordedCue(block.voiceClip);showVI("🎙 "+block.name)}}}
       onTick({globalBeat,beatInBlock,beatInBar,barInBlock,blockIndex:this.blockIdx,totalBeats,revAmt,totalBlockBeats});
       beatInBlock++;globalBeat++;
       if(beatInBlock>=totalBlockBeats){beatInBlock=0;this.blockIdx++;this.setReverb(reverbBase)}
@@ -297,25 +311,95 @@ let viT;function showVI(t){const e=document.getElementById('voiceIndicator');e.t
 let pT;function triggerPulse(c,s){const e=document.getElementById('fullscreenPulse');if(!e)return;const h=c.replace('#',''),r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);e.style.background=`rgba(${r},${g},${b},${Math.max(.12,Math.min(.85,s))})`;e.classList.remove('show');void e.offsetWidth;e.classList.add('show');clearTimeout(pT);pT=setTimeout(()=>e.classList.remove('show'),135)}
 async function ensureAudioUnlocked(){audio.init();if(audio.ctx&&audio.ctx.state==='suspended')await audio.ctx.resume();if(audio.ctx){const b=audio.ctx.createBuffer(1,1,audio.ctx.sampleRate),s=audio.ctx.createBufferSource();s.buffer=b;s.connect(audio.ctx.destination);s.start(0)}}
 
-// ═══════ RECORDING ═══════
-let activeRecorder=null,activeStream=null,activeChunks=[];
+// ═══════ RECORDING (with metronome + progress) ═══════
+let activeRecorder=null,activeStream=null,activeChunks=[],recTimer=null;
+
 async function startBlockVoiceRecording(blockId){
-  if(state.playing)return;if(state.recordingId===blockId){stopBlockVoiceRecording();return}
+  if(state.playing)return;
+  if(state.recordingId===blockId){stopBlockVoiceRecording();return}
   if(state.recordingId)stopBlockVoiceRecording();
-  const block=state.blocks.find(b=>b.id===blockId);if(!block)return;await ensureAudioUnlocked();
+  const block=state.blocks.find(b=>b.id===blockId);if(!block)return;
+  await ensureAudioUnlocked();
   try{activeStream=await navigator.mediaDevices.getUserMedia({audio:true})}catch{alert('No se pudo acceder al micrófono.');return}
-  showVI('Prepárate...');const beatMs=60000/state.bpm;
-  for(let i=0;i<4;i++){audio.click(i===0?1400:900,i===0?.8:.45,.05);showVI(`REC en ${4-i}`);await new Promise(r=>setTimeout(r,beatMs))}
+
+  const beatMs=60000/state.bpm;
+  const totalBeats=block.bars*state.ts;
+  const totalMs=totalBeats*beatMs;
+
+  // Show overlay
+  const overlay=document.getElementById('recOverlay');
+  overlay.innerHTML=`<div class="rec-overlay">
+    <div class="rec-title" style="color:${block.color}">🎙 ${block.name}</div>
+    <div class="rec-beat" id="recBeat" style="color:${block.color}">-</div>
+    <div class="rec-bar-info" id="recBarInfo">Preparando...</div>
+    <div class="rec-progress-track"><div class="rec-progress-fill" id="recProgress" style="background:${block.color};width:0"></div></div>
+    <div class="rec-progress-markers"><span>0</span>${Array.from({length:block.bars-1},(_,i)=>`<span>${i+1}</span>`).join('')}<span>${block.bars}</span></div>
+    <div class="rec-status" id="recStatus"><span>Cuenta atrás...</span></div>
+    <button class="rec-stop-btn" id="recStopBtn">⏹ PARAR</button>
+  </div>`;
+  document.getElementById('recStopBtn').addEventListener('click',()=>stopBlockVoiceRecording());
+
+  // Count-in: 4 beats
+  for(let i=0;i<4;i++){
+    audio.click(i===0?1400:900,i===0?.8:.45,.05);
+    document.getElementById('recBeat').textContent=4-i;
+    document.getElementById('recBarInfo').textContent=`Cuenta atrás`;
+    await new Promise(r=>setTimeout(r,beatMs));
+  }
+
+  // Start recording
   const mt=['audio/webm;codecs=opus','audio/mp4','audio/webm'].find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t));
-  try{activeChunks=[];activeRecorder=mt?new MediaRecorder(activeStream,{mimeType:mt}):new MediaRecorder(activeStream);
-    state.recordingId=blockId;render();showVI('🔴 Grabando...');
+  try{
+    activeChunks=[];activeRecorder=mt?new MediaRecorder(activeStream,{mimeType:mt}):new MediaRecorder(activeStream);
+    state.recordingId=blockId;
+    document.getElementById('recStatus').innerHTML='<div class="rec-dot"></div><span>Grabando...</span>';
+
     activeRecorder.ondataavailable=e=>{if(e.data&&e.data.size)activeChunks.push(e.data)};
-    activeRecorder.onstop=()=>{const blob=new Blob(activeChunks,{type:activeRecorder.mimeType||'audio/webm'});const reader=new FileReader();reader.onloadend=()=>{block.voiceClip=reader.result;state.recordingId=null;cleanupRec();render();showVI('✅ Voz guardada')};reader.readAsDataURL(blob)};
+    activeRecorder.onstop=()=>{
+      const blob=new Blob(activeChunks,{type:activeRecorder.mimeType||'audio/webm'});
+      const reader=new FileReader();
+      reader.onloadend=()=>{block.voiceClip=reader.result;state.recordingId=null;cleanupRec();overlay.innerHTML='';render();showVI('✅ Voz guardada')};
+      reader.readAsDataURL(blob);
+    };
     activeRecorder.start();
-  }catch(e){console.error(e);cleanupRec()}
+
+    // Metronome during recording + progress
+    let currentBeat=0;
+    const tickRec=()=>{
+      if(!activeRecorder||activeRecorder.state==='inactive'||currentBeat>=totalBeats){
+        // Auto-stop when block duration reached
+        if(activeRecorder&&activeRecorder.state!=='inactive')activeRecorder.stop();
+        return;
+      }
+      const beatInBar=currentBeat%state.ts;
+      const barInBlock=Math.floor(currentBeat/state.ts);
+      const isDownbeat=beatInBar===0;
+      const isLastBar=barInBlock===block.bars-1;
+
+      // Click
+      if(isDownbeat){audio.click(1200,.5,.05)}else{audio.click(800,.25,.03)}
+      // Intensify last bar
+      if(isLastBar){audio.click(2200,.15,.015)}
+
+      // Update overlay
+      const pct=(currentBeat+1)/totalBeats*100;
+      document.getElementById('recProgress').style.width=pct+'%';
+      document.getElementById('recBeat').textContent=beatInBar+1;
+      document.getElementById('recBarInfo').textContent=`Compás ${barInBlock+1} de ${block.bars}`;
+      if(isLastBar){document.getElementById('recStatus').innerHTML='<div class="rec-dot"></div><span style="color:var(--red)">¡Último compás!</span>'}
+
+      currentBeat++;
+      recTimer=setTimeout(tickRec,beatMs);
+    };
+    tickRec();
+
+  }catch(e){console.error(e);cleanupRec();overlay.innerHTML=''}
 }
-function stopBlockVoiceRecording(){if(activeRecorder&&activeRecorder.state!=='inactive')activeRecorder.stop()}
-function cleanupRec(){if(activeStream)activeStream.getTracks().forEach(t=>t.stop());activeStream=null;activeRecorder=null;activeChunks=[]}
+function stopBlockVoiceRecording(){
+  if(recTimer){clearTimeout(recTimer);recTimer=null}
+  if(activeRecorder&&activeRecorder.state!=='inactive')activeRecorder.stop();
+}
+function cleanupRec(){if(recTimer){clearTimeout(recTimer);recTimer=null}if(activeStream)activeStream.getTracks().forEach(t=>t.stop());activeStream=null;activeRecorder=null;activeChunks=[]}
 
 // ═══════ EXPORT (MP3 with voice clips) ═══════
 function addPulse(data,sr,startSec,freq,gain,durSec,type='sine'){
@@ -348,9 +432,9 @@ async function exportAudio(blocks,bpm,ts,reverbBase,reverbInt,onProgress,onFinis
       else if(dB){addPulse(data,sr,t,1200,.5*wb,.05)}else{addPulse(data,sr,t,800,.25*wb,.03)}
       if(hN&&lB){const nb=blocks[bi+1];
         if(ts>=4){const cs=ts-4,cb=bIBar-cs;if(cb>=0&&cb<=3){addPulse(data,sr,t,cF[cb],.42,cD[cb],'triangle');
-          if(cb===0&&nb.voice&&nb.voiceClip){const cd=clips.get(nb.voiceClip);if(cd){const ss=Math.floor(t*sr);for(let si=0;si<cd.length&&(ss+si)<data.length;si++)data[ss+si]+=cd[si]*.9}}}}
+          if(cb===0&&bl.voice&&bl.voiceClip){const cd=clips.get(bl.voiceClip);if(cd){const ss=Math.floor(t*sr);for(let si=0;si<cd.length&&(ss+si)<data.length;si++)data[ss+si]+=cd[si]*.9}}}}
         else if(ts===3&&bIBar<=2){addPulse(data,sr,t,cF[[0,2,3][bIBar]],.42,cD[[0,2,3][bIBar]],'triangle');
-          if(bIBar===0&&nb.voice&&nb.voiceClip){const cd=clips.get(nb.voiceClip);if(cd){const ss=Math.floor(t*sr);for(let si=0;si<cd.length&&(ss+si)<data.length;si++)data[ss+si]+=cd[si]*.9}}}}
+          if(bIBar===0&&bl.voice&&bl.voiceClip){const cd=clips.get(bl.voiceClip);if(cd){const ss=Math.floor(t*sr);for(let si=0;si<cd.length&&(ss+si)<data.length;si++)data[ss+si]+=cd[si]*.9}}}}
       beat++;if(beat%16===0)onProgress(beat/totB);
     }
   }
