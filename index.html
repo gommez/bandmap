@@ -290,14 +290,15 @@ const audio={
       if(progress>.7){const rp=(progress-.7)/.3;revAmt=reverbBase+(.9-reverbBase)*Math.pow(rp,2-reverbInt*1.5)}
       this.setReverb(revAmt);
       const isDownbeat=beatInBar===0,isLastBar=barInBlock===block.bars-1,hasNext=this.blockIdx<blocks.length-1,isClaqueta=block.claqueta&&isLastBar&&hasNext,isBlockEntrance=beatInBlock===0;
-      if(isBlockEntrance){this.click(1400,.85,.08);this.click(700,.35,.06)}
+      if(isBlockEntrance){this.click(1400,.85,.08);this.click(700,.35,.06);
+        // Play this block's voice clip from the start of the block
+        if(block.voice&&block.voiceClip){this.playRecordedCue(block.voiceClip);showVI("🎙 "+block.name)}}
       else if(isClaqueta){this.click(isDownbeat?1400:1000,isDownbeat?.7:.5,isDownbeat?.06:.04);this.click(2200,.25,.015)}
       else if(isDownbeat){this.click(1200,.5,.05)}else{this.click(800,.25,.03)}
-      if(hasNext&&isLastBar){const nb=blocks[this.blockIdx+1],nc=nb.color||'#FFD600';
-        // Play current block's voice clip on first count beat
+      if(hasNext&&isLastBar){const nc=blocks[this.blockIdx+1].color||'#FFD600';
         if(ts>=4){const cs=ts-4,cb=beatInBar-cs;if(cb>=0&&cb<=3){this.countTone(cb);triggerPulse(nc,[.28,.42,.62,.82][cb]);
-          if(cb===0&&block.voice&&block.voiceClip){this.playRecordedCue(block.voiceClip);showVI("🎙 "+block.name)}else if(cb===1)showVI("2");else if(cb===2)showVI("3");else if(cb===3)showVI("4")}}
-        else if(ts===3&&beatInBar<=2){const m=[0,2,3][beatInBar];this.countTone(m);triggerPulse(nc,[.34,.58,.82][beatInBar]);if(beatInBar===0&&block.voice&&block.voiceClip){this.playRecordedCue(block.voiceClip);showVI("🎙 "+block.name)}}}
+          if(cb===1)showVI("2");else if(cb===2)showVI("3");else if(cb===3)showVI("4")}}
+        else if(ts===3&&beatInBar<=2){const m=[0,2,3][beatInBar];this.countTone(m);triggerPulse(nc,[.34,.58,.82][beatInBar])}}
       onTick({globalBeat,beatInBlock,beatInBar,barInBlock,blockIndex:this.blockIdx,totalBeats,revAmt,totalBlockBeats});
       beatInBlock++;globalBeat++;
       if(beatInBlock>=totalBlockBeats){beatInBlock=0;this.blockIdx++;this.setReverb(reverbBase)}
@@ -427,14 +428,14 @@ async function exportAudio(blocks,bpm,ts,reverbBase,reverbInt,onProgress,onFinis
       const dB=bIBar===0,lB=barIB===bl.bars-1,hN=bi<blocks.length-1,clq=bl.claqueta&&lB&&hN,ent=bib===0;
       const pr=bib/tBB;let rv=reverbBase;if(pr>.7)rv=reverbBase+(.9-reverbBase)*Math.pow((pr-.7)/.3,2-reverbInt*1.5);
       const wb=1+rv*.25;
-      if(ent){addPulse(data,sr,t,1400,.85*wb,.08);addPulse(data,sr,t,700,.35*wb,.06)}
+      if(ent){addPulse(data,sr,t,1400,.85*wb,.08);addPulse(data,sr,t,700,.35*wb,.06);
+        // Mix voice clip from the start of the block
+        if(bl.voice&&bl.voiceClip){const cd=clips.get(bl.voiceClip);if(cd){const ss=Math.floor(t*sr);for(let si=0;si<cd.length&&(ss+si)<data.length;si++)data[ss+si]+=cd[si]*.9}}}
       else if(clq){addPulse(data,sr,t,dB?1400:1000,(dB?.7:.5)*wb,dB?.06:.04);addPulse(data,sr,t,2200,.25*wb,.015,'triangle')}
       else if(dB){addPulse(data,sr,t,1200,.5*wb,.05)}else{addPulse(data,sr,t,800,.25*wb,.03)}
-      if(hN&&lB){const nb=blocks[bi+1];
-        if(ts>=4){const cs=ts-4,cb=bIBar-cs;if(cb>=0&&cb<=3){addPulse(data,sr,t,cF[cb],.42,cD[cb],'triangle');
-          if(cb===0&&bl.voice&&bl.voiceClip){const cd=clips.get(bl.voiceClip);if(cd){const ss=Math.floor(t*sr);for(let si=0;si<cd.length&&(ss+si)<data.length;si++)data[ss+si]+=cd[si]*.9}}}}
-        else if(ts===3&&bIBar<=2){addPulse(data,sr,t,cF[[0,2,3][bIBar]],.42,cD[[0,2,3][bIBar]],'triangle');
-          if(bIBar===0&&bl.voice&&bl.voiceClip){const cd=clips.get(bl.voiceClip);if(cd){const ss=Math.floor(t*sr);for(let si=0;si<cd.length&&(ss+si)<data.length;si++)data[ss+si]+=cd[si]*.9}}}}
+      if(hN&&lB){
+        if(ts>=4){const cs=ts-4,cb=bIBar-cs;if(cb>=0&&cb<=3){addPulse(data,sr,t,cF[cb],.42,cD[cb],'triangle')}}
+        else if(ts===3&&bIBar<=2){addPulse(data,sr,t,cF[[0,2,3][bIBar]],.42,cD[[0,2,3][bIBar]],'triangle')}}
       beat++;if(beat%16===0)onProgress(beat/totB);
     }
   }
