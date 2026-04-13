@@ -61,7 +61,7 @@ input[type=range]{width:100%;accent-color:var(--y)}
 .block-list{flex:1;overflow-y:auto;overflow-x:hidden;padding:10px 16px 16px;display:flex;flex-direction:column;gap:6px;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
 .empty-msg{text-align:center;padding:36px 20px;opacity:.2;font-size:12px}
 
-.block-card{background:var(--card);border-radius:10px;border:1px solid var(--border);transition:all .4s ease;overflow:hidden;position:relative}
+.block-card{background:var(--card);border-radius:10px;border:1px solid var(--border);transition:all .4s ease;overflow:hidden;position:relative;flex-shrink:0}
 .block-card.active{border-width:2px;transform:scale(1.01)}
 .block-card.drag-over{border:2px dashed var(--y)}
 .block-card.dragging{opacity:.35}
@@ -114,8 +114,8 @@ input[type=range]{width:100%;accent-color:var(--y)}
 .action-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;border:1px solid var(--border);border-radius:6px;padding:7px;font-size:10px}
 .action-btn.danger{background:rgba(255,23,68,.1);border-color:var(--red);color:var(--red)}
 
-.add-btn{width:100%;border:2px dashed var(--border);border-radius:10px;padding:12px;display:flex;align-items:center;justify-content:center;gap:7px;font-size:12px;opacity:.4;margin-top:4px}
-.add-panel{background:var(--card);border-radius:10px;border:1px solid var(--border);padding:12px;margin-top:4px;display:none}
+.add-btn{width:100%;border:2px dashed var(--border);border-radius:10px;padding:12px;display:flex;align-items:center;justify-content:center;gap:7px;font-size:12px;opacity:.4;margin-top:4px;flex-shrink:0}
+.add-panel{background:var(--card);border-radius:10px;border:1px solid var(--border);padding:12px;margin-top:4px;display:none;flex-shrink:0}
 .add-panel.open{display:block}
 .add-panel-title{font-size:10px;opacity:.4;letter-spacing:1px;text-align:center;margin-bottom:8px}
 .add-sizes{display:flex;gap:7px}
@@ -676,7 +676,10 @@ document.getElementById('projList').addEventListener('click',e=>{
 });
 
 // ═══════ UI ═══════
-function render(){renderBlocks();updateDuration();updateBottomBar();updatePlayBtn()}
+function render(){renderBlocks();updateDuration();updateBottomBar();updatePlayBtn();
+  // Scroll to editing block if open
+  if(state.editingId&&!state.playing){setTimeout(()=>{const el=document.getElementById('block-'+state.editingId);if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'})},50)}
+}
 function updateDuration(){const tb=state.blocks.reduce((s,b)=>s+b.bars,0),secs=tb*state.ts*(60/state.bpm),m=Math.floor(secs/60),s=Math.floor(secs%60);document.getElementById('totalBars').textContent=tb+' compases';document.getElementById('totalTime').textContent=m+':'+String(s).padStart(2,'0')}
 function updateBottomBar(ps){const main=document.getElementById('bottomMain'),sub=document.getElementById('bottomSub');if(state.playing&&ps){const b=state.blocks[ps.blockIndex];if(b){main.textContent=b.name;main.style.color=b.color;sub.textContent=`Compás ${ps.barInBlock+1}/${b.bars} · Bloque ${ps.blockIndex+1}/${state.blocks.length}`}}else{main.style.color='#FFD600';main.textContent=state.bpm+' BPM · '+state.ts+'/4';const tb=state.blocks.reduce((s,b)=>s+b.bars,0),secs=tb*state.ts*(60/state.bpm),m=Math.floor(secs/60),s=Math.floor(secs%60);sub.textContent=state.blocks.length+' bloques · '+m+':'+String(s).padStart(2,'0')}}
 function updatePlayBtn(){const btn=document.getElementById('playBtn'),exp=document.getElementById('exportBtn'),empty=!state.blocks.length;if(state.playing){btn.className='play-btn stop';btn.innerHTML='<svg viewBox="0 0 24 24" fill="#0A0A0A"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>';exp.classList.add('disabled')}else{btn.className='play-btn go'+(empty?' disabled':'');btn.innerHTML='<svg viewBox="0 0 24 24" fill="#0A0A0A"><polygon points="5,3 19,12 5,21"/></svg>';exp.classList.toggle('disabled',empty)}}
