@@ -130,6 +130,8 @@ input[type=range]{width:100%;accent-color:var(--y)}
 .export-btn{height:50px;border-radius:12px;flex-shrink:0;border:1px solid var(--y);display:flex;align-items:center;justify-content:center;gap:5px;padding:0 12px;font-size:10px;font-weight:700;letter-spacing:1px;position:relative;overflow:hidden;transition:opacity .15s}
 .export-btn.disabled{opacity:.2;pointer-events:none}
 .export-progress{position:absolute;left:0;bottom:0;height:3px;background:var(--y);transition:width .3s}
+.loop-btn{width:42px;height:42px;border-radius:10px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;opacity:.4;transition:all .15s}
+.loop-btn.on{border-color:var(--y);opacity:1;background:rgba(255,214,0,.12)}
 
 .voice-indicator{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:14px;font-weight:700;color:var(--y);opacity:0;pointer-events:none;z-index:500;text-align:center;text-shadow:0 0 20px rgba(255,214,0,.5);transition:opacity .1s}
 .voice-indicator.show{opacity:1}
@@ -224,6 +226,7 @@ input[type=range]{width:100%;accent-color:var(--y)}
   <div class="bottom-bar">
     <button class="play-btn go disabled" id="playBtn"><svg viewBox="0 0 24 24" fill="#0A0A0A"><polygon points="6,3 20,12 6,21"/></svg></button>
     <div class="bottom-info"><div class="bottom-info-main" id="bottomMain">120 BPM · 4/4</div><div class="bottom-info-sub" id="bottomSub">0 bloques · 0:00</div></div>
+    <button class="loop-btn" id="loopBtn" title="Bucle">🔁</button>
     <button class="export-btn disabled" id="exportBtn"><div class="export-progress" id="exportProgress"></div><svg viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2" stroke-linecap="round"><path d="M21,15v4a2,2 0 0,1-2,2H5a2,2 0 0,1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span id="exportLabel">MP3</span></button>
   </div>
 </div>
@@ -240,7 +243,7 @@ let state={bpm:120,ts:4,reverbBase:0.15,reverbIntensity:0.5,
   delayTime:0,delayFeedback:0.3,delayMix:0,
   blocks:[],
   nextId:1,playing:false,recordingId:null,editingId:null,
-  showSettings:false,showAddPanel:false,showProjects:false
+  showSettings:false,showAddPanel:false,showProjects:false,loop:false
 };
 
 // ═══════ GIST API ═══════
@@ -322,7 +325,16 @@ const audio={
     const interval=60000/bpm;let globalBeat=0,beatInBlock=0;
     const totalBeats=blocks.reduce((s,b)=>s+b.bars*ts,0);
     const tick=()=>{
-      if(!this.isPlaying||this.blockIdx>=blocks.length){this.isPlaying=false;onFinish();return}
+      if(!this.isPlaying||this.blockIdx>=blocks.length){
+        if(state.loop&&this.isPlaying){
+          // Loop: restart from beginning
+          this.blockIdx=0;globalBeat=0;beatInBlock=0;
+          this.setReverb(state.reverbBase);
+          this.timer=setTimeout(tick,interval);
+          return;
+        }
+        this.isPlaying=false;onFinish();return;
+      }
       // Read live from state on every tick
       const reverbBase=state.reverbBase,reverbInt=state.reverbIntensity;
       this.updateVolumes();this.updateDelay();
@@ -724,6 +736,12 @@ document.getElementById('reverbIntSlider').addEventListener('input',e=>{state.re
 document.getElementById('delayTimeSlider').addEventListener('input',e=>{state.delayTime=+e.target.value;document.getElementById('delayTimeVal').textContent=e.target.value+' ms';audio.updateDelay()});
 document.getElementById('delayFbSlider').addEventListener('input',e=>{state.delayFeedback=+e.target.value/100;document.getElementById('delayFbVal').textContent=e.target.value+'%';audio.updateDelay()});
 document.getElementById('delayMixSlider').addEventListener('input',e=>{state.delayMix=+e.target.value/100;document.getElementById('delayMixVal').textContent=e.target.value+'%';audio.updateDelay()});
+
+// LOOP
+document.getElementById('loopBtn').addEventListener('click',()=>{
+  state.loop=!state.loop;
+  document.getElementById('loopBtn').classList.toggle('on',state.loop);
+});
 
 // PLAY
 document.getElementById('playBtn').addEventListener('click',async()=>{
